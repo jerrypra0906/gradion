@@ -1,0 +1,112 @@
+services:
+  # PostgreSQL Database (Gradion — separate volume from legacy LangkahKecil stacks)
+  postgres:
+    image: postgres:16-alpine
+    container_name: gradion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gradion}
+      POSTGRES_USER: ${POSTGRES_USER:-gradion_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-strong-password}
+    ports:
+      - "${POSTGRES_PORT_EXTERNAL:-5434}:5432"
+    volumes:
+      - gradion_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gradion_user -d gradion"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gradion-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gradion-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-5001}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      HOST: 0.0.0.0
+      API_VERSION: v1
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5050}
+      API_URL: ${API_URL:-http://localhost:5001}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:5001/api}
+      # Always use the internal Docker network hostname for Postgres.
+      # Avoid accidental overrides from a host `DATABASE_URL` env var (which would break container-to-container connectivity).
+      DATABASE_URL: postgresql://${POSTGRES_USER:-gradion_user}:${POSTGRES_PASSWORD:-change-this-strong-password}@postgres:5432/${POSTGRES_DB:-gradion}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars-12345678901234567890}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-token-secret-change-this-in-production-12345678901234567890}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      SESSION_SECRET: ${SESSION_SECRET:-your-session-secret-change-this-in-production-12345678901234567890}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5050}
+      CORS_CREDENTIALS: ${CORS_CREDENTIALS:-true}
+      # Email configuration - loaded from env_file (.env.example in dev/staging)
+      # RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME are loaded from env_file
+      EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS: ${EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS:-24}
+      EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES: ${EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES:-10}
+      # Rate limiting - increased for development
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-500}
+    env_file:
+      # Load real secrets if present, fallback to example defaults.
+      - ./backend/.env
+      - ./backend/.env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      # Development volumes (uncomment for hot-reload)
+      # - ./backend/src:/app/src
+      # - ./backend/prisma:/app/prisma
+      # - /app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gradion-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gradion-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5050}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5001/api}
+    env_file:
+      - ./frontend/.env.example  # Use .env.example in development (override with .env.local for production)
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - gradion-network
+
+volumes:
+  gradion_postgres_data:
+    driver: local
+
+networks:
+  gradion-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+# Allow Googlebot to crawl JavaScript for structured data
+User-agent: Googlebot
+Allow: /
+Allow: /_next/static/
+Allow: /resources
+Allow: /cms
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /admin/
+
+# Block other bots from internal paths
+User-agent: *
+Allow: /
+Allow: /resources
+Allow: /cms
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+
+Sitemap: https://gradion.org/sitemap.xml

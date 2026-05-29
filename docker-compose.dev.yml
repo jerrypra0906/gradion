@@ -1,0 +1,48 @@
+# Development Docker Compose - with hot-reload volumes
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# 
+# Note: In development, we use .env.example files instead of .env files
+# to keep credentials out of version control while allowing the team
+# to have working configurations.
+
+services:
+  backend:
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - ./backend/package.json:/app/package.json
+      - ./backend/package-lock.json:/app/package-lock.json
+      # Note: node_modules is NOT mounted to allow npm install to work properly
+    environment:
+      NODE_ENV: development
+    command: sh -c "npm install && npm run dev"
+    user: root  # Run as root to allow npm install, then switch to nodejs user in the command
+    env_file:
+      - ./backend/.env.example  # Use .env.example in development
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/next.config.js:/app/next.config.js
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      # Note: We don't mount node_modules as a volume to preserve the installed dependencies
+      - /app/.next  # Prevent overwriting .next
+    environment:
+      NODE_ENV: development
+      # Next.js NEXT_PUBLIC_ variables need to be explicitly set
+      # These are read from .env.example but must be in environment for Next.js dev mode
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-240575427402-su5e6dfpmpv3oqmu1d5au323a8vtskvg.apps.googleusercontent.com}
+    command: sh -c "npm install && npm run dev"
+    env_file:
+      - ./frontend/.env.example  # Use .env.example in development
+

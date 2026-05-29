@@ -1,0 +1,36 @@
+# Postgres only (no backend/frontend) — for local `npm run dev` against Docker DB.
+# Avoids clashing with docker-compose.yml (which also uses gradion DB defaults).
+#
+# Default host port: 5435 → use DATABASE_URL ...@localhost:5435/gradion...
+#
+# Usage:
+#   docker compose -f docker-compose.gradion.yml --env-file .env.gradion.example up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gradion-postgres-standalone
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gradion}
+      POSTGRES_USER: ${POSTGRES_USER:-gradion_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-strong-password}
+    ports:
+      - "${POSTGRES_PORT_EXTERNAL:-5435}:5432"
+    volumes:
+      - gradion_postgres_standalone_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gradion_user -d gradion"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gradion-standalone-network
+
+volumes:
+  gradion_postgres_standalone_data:
+    driver: local
+
+networks:
+  gradion-standalone-network:
+    driver: bridge

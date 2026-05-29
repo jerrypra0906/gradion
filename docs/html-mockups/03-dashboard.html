@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradion — Dashboard (mockup)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <div class="bg-slate-800 text-slate-100 text-xs px-4 py-2 flex flex-wrap gap-4">
+    <span class="font-semibold text-amber-300">Mockup</span>
+    <a href="index.html" class="hover:text-white">Index</a>
+    <span class="text-slate-400">03 Dashboard</span>
+  </div>
+
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex justify-between h-16 items-center">
+        <div class="flex items-center gap-8">
+          <a href="01-landing.html" class="text-xl font-bold text-blue-700">Gradion</a>
+          <nav class="hidden md:flex gap-6 text-sm font-medium text-gray-700">
+            <a href="03-dashboard.html" class="text-blue-600 border-b-2 border-blue-500 pb-5 -mb-px">Dashboard</a>
+            <a href="04-child.html" class="hover:text-gray-900">Children</a>
+            <a href="#" class="hover:text-gray-900">My Logs</a>
+            <a href="#" class="hover:text-gray-900">Reports</a>
+            <a href="#" class="hover:text-gray-900">Profile</a>
+          </nav>
+        </div>
+        <div class="flex items-center gap-3 text-sm">
+          <span class="px-2 py-0.5 rounded-full bg-green-100 text-green-800 text-xs font-medium">parent</span>
+          <span class="text-gray-700">Budi Santoso</span>
+          <button type="button" class="text-gray-600 hover:text-gray-900">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+    <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Dasbor</h1>
+        <p class="mt-2 text-gray-600">Selamat datang kembali, Budi Santoso!</p>
+      </div>
+      <button type="button" class="px-4 py-2 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50">Lihat tur lagi</button>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+      <a href="04-child.html" class="bg-white overflow-hidden shadow rounded-lg hover:shadow-lg transition p-5 block">
+        <dt class="text-sm font-medium text-gray-500 truncate">Anak Saya</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900">2</dd>
+      </a>
+      <div class="bg-white overflow-hidden shadow rounded-lg p-5">
+        <dt class="text-sm font-medium text-gray-500 truncate">Catatan Aktivitas</dt>
+        <dd class="mt-1 text-3xl font-semibold text-gray-900">14</dd>
+      </div>
+      <div class="bg-white overflow-hidden shadow rounded-lg p-5 border border-blue-100">
+        <dt class="text-sm font-medium text-blue-700">Modul</dt>
+        <dd class="mt-2 text-sm text-gray-600">Pelajari cara memaksimalkan Gradion</dd>
+        <a href="#" class="mt-3 inline-block text-sm font-medium text-blue-600">Buka modul →</a>
+      </div>
+    </div>
+
+    <section class="bg-white shadow rounded-lg p-6 mb-8">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Aksi Cepat</h2>
+      <div class="flex flex-wrap gap-3">
+        <a href="#" class="inline-flex px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Catatan Aktivitas Baru</a>
+        <a href="05-initial-observation.html" class="inline-flex px-4 py-2 border border-gray-300 bg-white text-sm font-medium rounded-md hover:bg-gray-50">Tambah Anak</a>
+      </div>
+    </section>
+
+    <section class="bg-white shadow rounded-lg overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-medium text-gray-900">Anak Terbaru</h2>
+      </div>
+      <ul class="divide-y divide-gray-200">
+        <li>
+          <a href="04-child.html" class="block px-6 py-4 hover:bg-gray-50">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm font-semibold text-gray-900">Aditya Pratama</p>
+                <p class="text-xs text-gray-500 mt-0.5">ASD · Kuota sesi: 2/4</p>
+              </div>
+              <span class="text-gray-400">→</span>
+            </div>
+          </a>
+        </li>
+        <li>
+          <a href="04-child.html" class="block px-6 py-4 hover:bg-gray-50">
+            <div class="flex justify-between items-center">
+              <div>
+                <p class="text-sm font-semibold text-gray-900">Siti Nurhaliza</p>
+                <p class="text-xs text-gray-500 mt-0.5">Kuota sesi: 1/4</p>
+              </div>
+              <span class="text-gray-400">→</span>
+            </div>
+          </a>
+        </li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

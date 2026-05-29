@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradion — Initial Observation (mockup)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    input[type="range"] { width: 100%; accent-color: #2563eb; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <div class="bg-slate-800 text-slate-100 text-xs px-4 py-2 flex flex-wrap gap-4">
+    <span class="font-semibold text-amber-300">Mockup</span>
+    <a href="index.html" class="hover:text-white">Index</a>
+    <span class="text-slate-400">05 Initial Observation</span>
+  </div>
+
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center">
+      <a href="03-dashboard.html" class="text-xl font-bold text-blue-700">Gradion</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold text-gray-900">Tambah Anak</h1>
+    <p class="mt-1 text-sm text-gray-600">Langkah 2 dari 2 — Checklist observasi awal</p>
+
+    <div class="mt-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-6">
+      <div class="rounded-lg bg-blue-50 border border-blue-100 p-4 text-sm text-gray-800">
+        <p class="font-semibold text-gray-900">Cara mengisi checklist</p>
+        <ul class="mt-2 list-disc list-inside space-y-1 text-gray-700">
+          <li><strong>F (Frequency)</strong> — seberapa sering (1–5)</li>
+          <li><strong>S (Severity)</strong> — seberapa berat (1–5)</li>
+          <li><strong>%</strong> — persentase untuk perhatian &amp; kepatuhan (0–100)</li>
+        </ul>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white">OBS 1</button>
+        <button type="button" class="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700">OBS 2</button>
+        <button type="button" class="px-4 py-2 rounded-full text-sm border border-dashed border-gray-300 text-gray-600">+ Add OBS</button>
+      </div>
+
+      <section>
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Behavior (F / S)</h2>
+        <div class="space-y-5">
+          <div class="grid sm:grid-cols-2 gap-4 items-center border-b border-gray-100 pb-4">
+            <span class="text-sm font-medium">Tantrums</span>
+            <div class="space-y-2">
+              <label class="text-xs text-gray-500">F: 3</label>
+              <input type="range" min="1" max="5" value="3" />
+              <label class="text-xs text-gray-500">S: 2</label>
+              <input type="range" min="1" max="5" value="2" />
+            </div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4 items-center border-b border-gray-100 pb-4">
+            <span class="text-sm font-medium">Self-Abuse</span>
+            <div class="space-y-2">
+              <label class="text-xs text-gray-500">F: 1</label>
+              <input type="range" min="1" max="5" value="1" />
+              <label class="text-xs text-gray-500">S: 1</label>
+              <input type="range" min="1" max="5" value="1" />
+            </div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4 items-center">
+            <span class="text-sm font-medium">Aggression</span>
+            <div class="space-y-2">
+              <label class="text-xs text-gray-500">F: 2 · S: 3</label>
+              <input type="range" min="1" max="5" value="2" />
+              <input type="range" min="1" max="5" value="3" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Attention &amp; Eye Contact</h2>
+        <div class="space-y-4 text-sm">
+          <div>
+            <div class="flex justify-between mb-1"><span>Attention span (minutes)</span><span class="font-mono">8</span></div>
+            <input type="number" value="8" min="0" max="120" class="w-24 border border-gray-300 rounded px-2 py-1" />
+          </div>
+          <div>
+            <div class="flex justify-between mb-1"><span>Eye contact on request</span><span>45%</span></div>
+            <input type="range" min="0" max="100" value="45" />
+          </div>
+          <div>
+            <div class="flex justify-between mb-1"><span>Eye contact when name called</span><span>60%</span></div>
+            <input type="range" min="0" max="100" value="60" />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Compliance (%)</h2>
+        <div class="space-y-3 text-sm">
+          <div><div class="flex justify-between mb-1"><span>Come here (5 ft)</span><span>70%</span></div><input type="range" min="0" max="100" value="70" /></div>
+          <div><div class="flex justify-between mb-1"><span>Sit down</span><span>55%</span></div><input type="range" min="0" max="100" value="55" /></div>
+          <div><div class="flex justify-between mb-1"><span>Hands down</span><span>40%</span></div><input type="range" min="0" max="100" value="40" /></div>
+        </div>
+      </section>
+
+      <div class="flex flex-col-reverse sm:flex-row gap-3 justify-end pt-4 border-t border-gray-200">
+        <a href="04-child.html" class="px-4 py-2 text-center border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50">Kembali</a>
+        <button type="button" class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">Buat Anak</button>
+      </div>
+    </div>
+
+    <p class="mt-4 text-xs text-gray-500">Langkah 1 (nama, tanggal lahir, jam mingguan) tidak ditampilkan di mockup ini.</p>
+  </main>
+</body>
+</html>

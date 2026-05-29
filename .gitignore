@@ -1,0 +1,69 @@
+# Environment variables
+.env
+.env.gradion
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Allow example env templates
+!.env.example
+!.env.*.example
+!backend/.env.example
+!frontend/.env.example
+!frontend/.env.local.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# Allow frontend app logs directory
+!frontend/src/app/dashboard/logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+.dockerignore
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.cert
+
+# Uploads (keep directory structure but ignore files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep

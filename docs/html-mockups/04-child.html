@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradion — Child detail (mockup)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <div class="bg-slate-800 text-slate-100 text-xs px-4 py-2 flex flex-wrap gap-4">
+    <span class="font-semibold text-amber-300">Mockup</span>
+    <a href="index.html" class="hover:text-white">Index</a>
+    <span class="text-slate-400">04 Child</span>
+  </div>
+
+  <header class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <a href="03-dashboard.html" class="text-xl font-bold text-blue-700">Gradion</a>
+      <span class="text-sm text-gray-600">Budi Santoso · parent</span>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-6 space-y-4">
+    <a href="03-dashboard.html" class="text-sm text-blue-600 hover:underline">← Kembali</a>
+
+    <!-- Child profile -->
+    <section class="bg-white shadow sm:rounded-lg overflow-hidden">
+      <button type="button" class="w-full px-5 py-4 flex justify-between items-center text-left hover:bg-gray-50">
+        <h2 class="text-xl font-bold text-gray-900">Aditya Pratama</h2>
+        <span class="text-gray-400">▾</span>
+      </button>
+      <div class="px-5 pb-5 border-t border-gray-100 space-y-4 text-sm">
+        <p><span class="text-gray-500">Tanggal lahir:</span> 15 Mar 2019</p>
+        <div>
+          <div class="flex justify-between text-sm mb-1">
+            <span class="font-medium text-gray-700">Target jam mingguan</span>
+            <span>3 / 5 jam</span>
+          </div>
+          <div class="h-2 bg-gray-200 rounded-full"><div class="h-2 bg-blue-600 rounded-full" style="width:60%"></div></div>
+        </div>
+        <p class="text-gray-600"><span class="font-medium text-gray-700">Lingkungan:</span> Ruang belajar di rumah, mainan edukatif, kurang gangguan TV.</p>
+      </div>
+    </section>
+
+    <!-- Initial Observation -->
+    <section class="bg-white shadow sm:rounded-lg overflow-hidden">
+      <button type="button" class="w-full px-5 py-4 flex justify-between items-center text-left">
+        <span class="text-xl font-bold text-gray-900">Checklist Observasi Awal</span>
+        <span class="text-gray-400">▾</span>
+      </button>
+      <div class="px-5 pb-5 border-t border-gray-100">
+        <p class="text-xs text-gray-500 mb-3">OBS 1 · Terisi</p>
+        <div class="overflow-x-auto text-xs">
+          <table class="min-w-full border border-gray-200">
+            <thead class="bg-gray-50"><tr><th class="px-2 py-1 text-left">Perilaku</th><th>F</th><th>S</th></tr></thead>
+            <tbody class="divide-y">
+              <tr><td class="px-2 py-1">Tantrums</td><td>2</td><td>3</td></tr>
+              <tr><td class="px-2 py-1">Aggression</td><td>1</td><td>2</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <h3 class="text-sm font-semibold text-gray-900">Laporan Assessment</h3>
+          <p class="mt-2 text-sm text-gray-700">Ringkasan AI: fokus pada compliance dan kontak mata; rekomendasi program imitasi suara 10 trial/hari.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABA Program -->
+    <section class="bg-white shadow sm:rounded-lg overflow-hidden">
+      <button type="button" class="w-full px-5 py-4 flex justify-between items-center text-left">
+        <span class="text-xl font-bold text-gray-900">Program rumah mingguan (ABA)</span>
+        <span class="text-gray-400">▾</span>
+      </button>
+      <div class="px-5 pb-5 border-t border-gray-100 space-y-4">
+        <div class="flex flex-wrap gap-2 items-center justify-between">
+          <p class="text-sm"><span class="font-medium">Minggu mulai:</span> 2026-05-18</p>
+          <button type="button" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md">Buat / perbarui minggu ini</button>
+        </div>
+        <ul class="space-y-2">
+          <li class="rounded-md border border-gray-200">
+            <div class="px-3 py-2 flex justify-between items-start">
+              <div>
+                <p class="text-sm font-semibold">Imitasi suara</p>
+                <p class="text-xs text-gray-600">Komunikasi</p>
+              </div>
+              <span class="text-xs font-medium">Dilakukan: 1</span>
+            </div>
+            <div class="px-3 pb-3 border-t border-gray-100 text-xs space-y-2">
+              <p><span class="font-semibold">Target:</span> 1–2 suara vokal</p>
+              <a href="06-program.html" class="inline-block mt-2 px-3 py-1.5 bg-blue-600 text-white rounded text-sm">Mulai tugas ini</a>
+            </div>
+          </li>
+          <li class="rounded-md border border-gray-200 px-3 py-2 flex justify-between">
+            <div>
+              <p class="text-sm font-semibold">Mengikuti instruksi sederhana</p>
+              <p class="text-xs text-gray-600">Kepatuhan</p>
+            </div>
+            <span class="text-xs">Dilakukan: 0</span>
+          </li>
+        </ul>
+        <button type="button" class="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md">Mulai program</button>
+      </div>
+    </section>
+
+    <!-- Activity logs -->
+    <section class="bg-white shadow sm:rounded-lg overflow-hidden">
+      <button type="button" class="w-full px-5 py-4 flex justify-between items-center text-left">
+        <span class="text-xl font-bold text-gray-900">Riwayat Catatan Aktivitas</span>
+        <span class="text-gray-400">▸</span>
+      </button>
+    </section>
+  </main>
+</body>
+</html>

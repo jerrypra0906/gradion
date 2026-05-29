@@ -1,0 +1,258 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Ensure black text color for all form inputs on mobile devices (especially iOS Safari) */
+input[type="text"],
+input[type="email"],
+input[type="tel"],
+input[type="password"],
+input[type="date"],
+input[type="number"],
+input[type="search"],
+input[type="url"],
+select,
+textarea {
+  color: #111827;
+  -webkit-text-fill-color: #111827;
+}
+
+/* Ensure placeholder text is visible but lighter */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+  -webkit-text-fill-color: #9ca3af;
+  opacity: 1;
+}
+
+/* CMS Article Styling - Enhanced Readability */
+.cms-article {
+  /* Optimal reading width: 65-75 characters per line */
+  max-width: 65ch;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.75;
+  color: #374151;
+}
+
+.cms-article h1 {
+  @apply text-4xl md:text-5xl font-bold text-gray-900 mb-4 leading-tight;
+}
+
+.cms-article h2 {
+  @apply text-3xl md:text-4xl font-bold text-gray-900 mt-12 mb-6 leading-tight;
+  @apply border-b-2 border-gray-200 pb-3;
+}
+
+.cms-article h3 {
+  @apply text-2xl md:text-3xl font-semibold text-gray-900 mt-10 mb-4 leading-tight;
+}
+
+.cms-article h4 {
+  @apply text-xl md:text-2xl font-semibold text-gray-900 mt-8 mb-3 leading-tight;
+}
+
+.cms-article h5,
+.cms-article h6 {
+  @apply text-lg md:text-xl font-semibold text-gray-900 mt-6 mb-2 leading-tight;
+}
+
+.cms-article p {
+  @apply text-base md:text-lg text-gray-700 leading-relaxed mb-6;
+  @apply max-w-none;
+}
+
+.cms-article p:last-child {
+  @apply mb-0;
+}
+
+.cms-article ul,
+.cms-article ol {
+  @apply mb-6 ml-6 space-y-3;
+}
+
+.cms-article ul {
+  @apply list-disc;
+}
+
+.cms-article ol {
+  @apply list-decimal;
+}
+
+.cms-article li {
+  @apply text-base md:text-lg text-gray-700 leading-relaxed;
+  @apply pl-2;
+}
+
+.cms-article li p {
+  @apply mb-3;
+}
+
+.cms-article li:last-child p {
+  @apply mb-0;
+}
+
+.cms-article strong,
+.cms-article b {
+  @apply font-semibold text-gray-900;
+}
+
+.cms-article em,
+.cms-article i {
+  @apply italic text-gray-800;
+}
+
+.cms-article a {
+  @apply text-blue-600 hover:text-blue-700 underline;
+  @apply transition-colors duration-200;
+}
+
+.cms-article a:hover {
+  @apply text-blue-800;
+}
+
+.cms-article blockquote {
+  @apply border-l-4 border-blue-500 pl-6 pr-4 py-4 my-8;
+  @apply bg-blue-50 rounded-r-lg;
+  @apply italic text-gray-800;
+}
+
+.cms-article blockquote p {
+  @apply mb-0 text-lg;
+}
+
+.cms-article blockquote p:not(:last-child) {
+  @apply mb-4;
+}
+
+.cms-article code {
+  @apply bg-gray-100 text-gray-800 px-2 py-1 rounded;
+  @apply text-sm font-mono;
+}
+
+.cms-article pre {
+  @apply bg-gray-900 text-gray-100 p-6 rounded-lg;
+  @apply overflow-x-auto mb-6;
+  @apply border border-gray-700;
+}
+
+.cms-article pre code {
+  @apply bg-transparent text-gray-100 p-0;
+  @apply text-sm;
+}
+
+.cms-article img {
+  @apply rounded-lg shadow-md my-8 mx-auto;
+  @apply max-w-full h-auto;
+}
+
+.cms-article figure {
+  @apply my-8;
+}
+
+.cms-article figcaption {
+  @apply text-sm text-gray-500 text-center mt-2 italic;
+}
+
+.cms-article table {
+  @apply w-full border-collapse mb-6;
+  @apply border border-gray-300 rounded-lg overflow-hidden;
+}
+
+.cms-article thead {
+  @apply bg-gray-100;
+}
+
+.cms-article th {
+  @apply px-4 py-3 text-left font-semibold text-gray-900;
+  @apply border-b-2 border-gray-300;
+}
+
+.cms-article td {
+  @apply px-4 py-3 text-gray-700 border-b border-gray-200;
+}
+
+.cms-article tr:last-child td {
+  @apply border-b-0;
+}
+
+.cms-article hr {
+  @apply my-10 border-0 border-t-2 border-gray-200;
+}
+
+.cms-article mark {
+  @apply bg-yellow-200 px-1 rounded;
+}
+
+/* Responsive adjustments for mobile */
+@media (max-width: 768px) {
+  .cms-article {
+    @apply p-6;
+  }
+  
+  .cms-article h1 {
+    @apply text-3xl;
+  }
+  
+  .cms-article h2 {
+    @apply text-2xl mt-8;
+  }
+  
+  .cms-article h3 {
+    @apply text-xl mt-6;
+  }
+  
+  .cms-article p,
+  .cms-article li {
+    @apply text-base;
+  }
+  
+  .cms-article blockquote {
+    @apply pl-4 pr-2 py-3 my-6;
+  }
+  
+  .cms-article pre {
+    @apply p-4 text-xs;
+  }
+}
+
+/* Print styles for better printing */
+@media print {
+  .cms-article {
+    @apply shadow-none p-0;
+  }
+  
+  .cms-article a {
+    @apply text-gray-900;
+  }
+  
+  .cms-article a::after {
+    content: " (" attr(href) ")";
+    @apply text-xs text-gray-500;
+  }
+}
+

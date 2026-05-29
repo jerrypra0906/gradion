@@ -1,0 +1,622 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                    Int                      @id @default(autoincrement())
+  name                  String
+  email                 String                   @unique
+  password_hash         String?
+  role                  Role
+  phone_number          String?
+  referral_code         String?                  @unique
+  points                Int                      @default(0)
+  referred_by_code      String? // Referral code used during registration
+  created_at            DateTime                 @default(now())
+  is_email_verified     Boolean                  @default(false)
+  google_id             String?                  @unique
+  verificationTokens    EmailVerificationToken[]
+  passwordResetTokens   PasswordResetToken[]
+  children              Child[]                  @relation("ParentChildren")
+  therapistMap          TherapistChild[]
+  therapistInvitations  TherapistInvitation[]    @relation("TherapistInvitations")
+  sessions              Session[]                @relation("UserSessions")
+  parentLogs            ParentLog[]              @relation("ParentLogs")
+  createdLogs           ParentLog[]              @relation("LogCreators")
+  therapistGoals        Goal[]                   @relation("TherapistGoals")
+  subscription          Subscription?
+  aiTokenWallet         AITokenWallet?
+  subscriptionRequests  SubscriptionRequest[]
+  createdPromotionCodes PromotionCode[]          @relation("PromotionCodeCreator")
+  promotionCodeUsages   PromotionCodeUsage[]     @relation("PromotionCodeUser")
+  videoFidelityJobs     VideoFidelityJob[]
+  learningModuleProgress LearningModuleProgress[]
+  abaProgramSessions   ChildAbaProgramSession[]
+
+  @@index([referral_code])
+  @@index([referred_by_code])
+  @@map("users")
+}
+
+model LearningModuleProgress {
+  id              Int      @id @default(autoincrement())
+  user_id         Int
+  module_key      String
+  video_completed Boolean  @default(false)
+  quiz_passed     Boolean  @default(false)
+  quiz_answers    Json?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, module_key])
+  @@index([user_id])
+  @@map("learning_module_progress")
+}
+
+model Child {
+  id            Int       @id @default(autoincrement())
+  parent_id     Int
+  name          String
+  birthdate     DateTime?
+  diagnosis     String?
+  monthly_quota Int       @default(12)
+  used_sessions Int       @default(0) // Deprecated: now counts activity logs
+  created_at    DateTime  @default(now())
+  behaviors     String?   @db.Text
+  concerns      String?   @db.Text
+  environment   String?   @db.Text
+  initial_observation Json?
+  initial_assessment_report String? @db.Text
+  initial_assessment_report_id String? @db.Text
+
+  parent               User                  @relation("ParentChildren", fields: [parent_id], references: [id], onDelete: Cascade)
+  therapistMap         TherapistChild[]
+  therapistInvitations TherapistInvitation[]
+  sessions             Session[]
+  parentLogs           ParentLog[]
+  goals                Goal[]                @relation("ChildGoals")
+  aiReportSummaries    AIReportSummary[]
+  videoFidelityJobs    VideoFidelityJob[]
+  abaProgramWeeks      ChildAbaProgramWeek[]
+
+  @@map("children")
+}
+
+enum AbaProgramWeekStatus {
+  draft
+  active
+  completed
+}
+
+enum AbaProgramSessionMode {
+  guided
+  upload
+}
+
+enum AbaProgramSessionStatus {
+  in_progress
+  completed
+  cancelled
+}
+
+/// Library of reusable ABA programs (master templates) captured from AI generations.
+model AbaMasterProgram {
+  id                        String   @id
+  language                  String   // 'en' | 'id' (kept as String to avoid enum churn)
+  canonical_key             String
+  name                      String
+  domain                    String?
+  rationale                 String?
+  targets                   Json?
+  recommended_trials_per_day Int?
+  materials                 Json?
+  data_collection           Json?
+  demo_video_url            String?
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  @@unique([language, canonical_key])
+  @@index([language])
+  @@map("aba_master_programs")
+}
+
+/// One calendar week of parent-led ABA practice, generated from assessment + prior notes.
+model ChildAbaProgramWeek {
+  id         Int                   @id @default(autoincrement())
+  child_id   Int
+  week_start DateTime              @db.Date
+  status     AbaProgramWeekStatus  @default(draft)
+  /// Structured plan: programs, targets, trials, daily guided activities (Sheet1-style), etc.
+  plan_json  Json
+  /// Optional: therapist-style rows parsed from an uploaded therapy-notes photo (OCR).
+  therapy_notes_json Json?
+  mainstream_goal_met Boolean      @default(false)
+  created_at DateTime              @default(now())
+  updated_at DateTime              @updatedAt
+
+  child    Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  sessions ChildAbaProgramSession[]
+
+  @@unique([child_id, week_start])
+  @@index([child_id])
+  @@map("child_aba_program_weeks")
+}
+
+model ChildAbaProgramSession {
+  id              Int                     @id @default(autoincrement())
+  week_id         Int
+  user_id         Int
+  mode            AbaProgramSessionMode
+  status          AbaProgramSessionStatus @default(in_progress)
+  /// For upload mode: stored URL (Supabase public URL or /uploads/...).
+  upload_image_url String?
+  upload_mime      String?
+  ocr_parsed_json  Json?
+  guided_results_json Json?
+  started_at    DateTime                @default(now())
+  completed_at  DateTime?
+
+  week ChildAbaProgramWeek @relation(fields: [week_id], references: [id], onDelete: Cascade)
+  user User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([week_id])
+  @@index([user_id])
+  @@map("child_aba_program_sessions")
+}
+
+model TherapistChild {
+  id           Int @id @default(autoincrement())
+  therapist_id Int
+  child_id     Int
+
+  therapist User  @relation(fields: [therapist_id], references: [id], onDelete: Cascade)
+  child     Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@unique([therapist_id, child_id])
+  @@map("therapist_children")
+}
+
+model TherapistInvitation {
+  id              Int              @id @default(autoincrement())
+  therapist_email String
+  child_id        Int
+  invited_by_id   Int // Parent/admin who sent the invitation
+  status          InvitationStatus @default(pending)
+  created_at      DateTime         @default(now())
+  linked_at       DateTime? // When therapist registered and was linked
+
+  child      Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  invited_by User  @relation("TherapistInvitations", fields: [invited_by_id], references: [id], onDelete: Cascade)
+
+  @@unique([therapist_email, child_id])
+  @@index([therapist_email])
+  @@index([child_id])
+  @@index([status])
+  @@map("therapist_invitations")
+}
+
+model Session {
+  id               Int       @id @default(autoincrement())
+  therapist_id     Int
+  child_id         Int
+  date             DateTime  @default(now())
+  duration_minutes Int
+  goals_worked_on  Json
+  notes            String?
+  status           LogStatus @default(pending)
+  parent_comment   String?   @db.Text
+
+  therapist User  @relation("UserSessions", fields: [therapist_id], references: [id], onDelete: Cascade)
+  child     Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model EmailVerificationToken {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  token      String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  token      String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([user_id])
+  @@map("password_reset_tokens")
+}
+
+model RegistrationAttempt {
+  id         Int      @id @default(autoincrement())
+  ip_address String
+  email      String
+  created_at DateTime @default(now())
+
+  @@index([ip_address, created_at])
+  @@map("registration_attempts")
+}
+
+model Banner {
+  id              Int            @id @default(autoincrement())
+  title           String
+  content         String
+  image_url       String?
+  target_audience BannerAudience
+  is_active       Boolean        @default(true)
+  start_date      DateTime?
+  end_date        DateTime?
+  priority        Int            @default(0)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  cmsContent CMSContent[]
+
+  @@map("banners")
+}
+
+model CMSContent {
+  id           Int       @id @default(autoincrement())
+  title        String
+  slug         String    @unique
+  content_html String    @db.Text
+  status       CMSStatus @default(draft)
+  publish_at   DateTime?
+  unpublish_at DateTime?
+  banner_id    Int?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  banner Banner? @relation(fields: [banner_id], references: [id], onDelete: SetNull)
+
+  @@map("cms_content")
+}
+
+/// Admin-managed template for the Initial Observation checklist shown during "Add Child".
+/// Stored as JSON so fields/sections/types can evolve without code changes.
+model InitialObservationTemplate {
+  id            Int      @id @default(autoincrement())
+  key           String   @unique // e.g. "initial-observation-v1"
+  version       Int      @default(1)
+  template_json Json
+  is_active     Boolean  @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([is_active])
+  @@map("initial_observation_templates")
+}
+
+/// Admin-managed learning module definition (replaces hardcoded frontend config).
+/// Includes localization, quiz content, prerequisites, and subscription gating.
+model LearningModule {
+  id                Int              @id @default(autoincrement())
+  key               String           @unique // stable identifier used for progress (e.g. "module-1")
+  order             Int              @default(1)
+  is_active         Boolean          @default(true)
+  required_plans    SubscriptionPlan[] @default([]) // empty = accessible to all plans
+  prerequisites     String[]         @default([]) // array of module keys required to unlock
+  youtube_url       String?
+  content_json      Json             // { title: {en,id}, concept:{en,id}, bullets:{en,id} }
+  quiz_json         Json?            // { questions:[{id, question:{en,id}, options:[{id,label:{en,id}}], correctOptionId}] }
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+
+  @@index([order])
+  @@index([is_active])
+  @@map("learning_modules")
+}
+
+model ParentLog {
+  id                Int       @id @default(autoincrement())
+  parent_id         Int // The child's parent (always set)
+  child_id          Int
+  creator_id        Int // The user who created this log (parent or therapist)
+  creator_role      Role // Role of the creator (parent or therapist)
+  log_date          DateTime  @default(now())
+  skills_practiced  Json // Array of objects { name, rating }
+  activities        String    @db.Text
+  duration_hours    Float     @default(3) // Session / activity duration in hours
+  rating            Int // 1-5 rating
+  behavior_notes    String?   @db.Text
+  ai_summary        String?   @db.Text
+  therapist_comment String?   @db.Text
+  status            LogStatus @default(pending)
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  parent  User  @relation("ParentLogs", fields: [parent_id], references: [id], onDelete: Cascade)
+  creator User  @relation("LogCreators", fields: [creator_id], references: [id], onDelete: Cascade)
+  child   Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@index([child_id, log_date])
+  @@index([parent_id, log_date])
+  @@index([creator_id])
+  @@map("parent_logs")
+}
+
+model Goal {
+  id             Int        @id @default(autoincrement())
+  child_id       Int
+  therapist_id   Int
+  title          String
+  description    String?    @db.Text
+  target_date    DateTime?
+  status         GoalStatus @default(active)
+  progress_notes String?    @db.Text
+  created_at     DateTime   @default(now())
+  updated_at     DateTime   @updatedAt
+
+  child     Child @relation("ChildGoals", fields: [child_id], references: [id], onDelete: Cascade)
+  therapist User  @relation("TherapistGoals", fields: [therapist_id], references: [id], onDelete: Cascade)
+  videoFidelityJobs VideoFidelityJob[]
+
+  @@index([child_id])
+  @@index([therapist_id])
+  @@map("goals")
+}
+
+enum VideoFidelityStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+model VideoFidelityJob {
+  id            Int                  @id @default(autoincrement())
+  child_id      Int
+  user_id       Int
+  goal_id       Int?
+  storage_path  String
+  mime_type     String
+  file_size     Int
+  abc_context   String?              @db.Text
+  status        VideoFidelityStatus  @default(pending)
+  result_json   Json?
+  error_message String?              @db.Text
+  tokens_used   Int?
+  created_at    DateTime             @default(now())
+  updated_at    DateTime             @updatedAt
+
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  goal  Goal? @relation(fields: [goal_id], references: [id], onDelete: SetNull)
+
+  @@index([child_id])
+  @@index([user_id])
+  @@index([status])
+  @@map("video_fidelity_jobs")
+}
+
+enum Role {
+  admin
+  therapist
+  consultant
+  parent
+}
+
+enum BannerAudience {
+  parents
+  therapists
+  all
+}
+
+enum LogStatus {
+  pending
+  approved
+  flagged
+}
+
+enum GoalStatus {
+  active
+  completed
+  paused
+  cancelled
+}
+
+enum CMSStatus {
+  draft
+  scheduled
+  published
+  archived
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  expired
+}
+
+model Subscription {
+  id         Int                @id @default(autoincrement())
+  user_id    Int                @unique
+  plan_type  SubscriptionPlan
+  status     SubscriptionStatus @default(active)
+  start_date DateTime           @default(now())
+  end_date   DateTime? // Calculated based on plan weeks from start_date
+  created_at DateTime           @default(now())
+  updated_at DateTime           @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@index([end_date])
+  @@map("subscriptions")
+}
+
+model AITokenWallet {
+  id                  Int              @id @default(autoincrement())
+  user_id             Int              @unique
+  plan_type           SubscriptionPlan
+  monthly_token_limit Int              @default(2000)
+  current_token_usage Int              @default(0)
+  renewal_date        DateTime
+  last_reset_date     DateTime         @default(now())
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([renewal_date])
+  @@map("ai_token_wallets")
+}
+
+enum SubscriptionPlan {
+  free
+  pro
+  premium
+  therapist
+
+  @@map("subscription_plan")
+}
+
+enum SubscriptionStatus {
+  active
+  cancelled
+  expired
+  trial
+
+  @@map("subscription_status")
+}
+
+model SubscriptionPlanConfig {
+  id                  Int              @id @default(autoincrement())
+  plan_type           SubscriptionPlan @unique
+  name                String
+  description         String?          @db.Text
+  weeks               Int              @default(4) // Number of weeks for subscription period
+  ai_access           Boolean          @default(false)
+  monthly_token_limit Int              @default(0)
+  price               Int              @default(0) // Price in IDR
+  is_active           Boolean          @default(true)
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  @@map("subscription_plan_configs")
+}
+
+enum SubscriptionRequestStatus {
+  pending
+  processing
+  completed
+  cancelled
+  failed
+}
+
+model SubscriptionRequest {
+  id                Int                       @id @default(autoincrement())
+  user_id           Int
+  plan_type         SubscriptionPlan
+  status            SubscriptionRequestStatus @default(pending)
+  amount            Int // Price in IDR
+  payment_method    String? // e.g., 'midtrans', 'manual'
+  payment_reference String? // Transaction ID or reference
+  midtrans_order_id String? // Midtrans order ID
+  midtrans_token    String? // Midtrans snap token for frontend
+  promotion_code_id Int? // Promotion code used
+  discount_amount   Int? // Discount applied in IDR
+  notes             String?                   @db.Text
+  created_at        DateTime                  @default(now())
+  updated_at        DateTime                  @updatedAt
+  completed_at      DateTime?
+
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  promotion_code PromotionCode? @relation(fields: [promotion_code_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([status])
+  @@index([midtrans_order_id])
+  @@index([promotion_code_id])
+  @@map("subscription_requests")
+}
+
+model PromotionCode {
+  id             Int                   @id @default(autoincrement())
+  code           String                @unique // Unique promotion code (e.g., "SUMMER2024")
+  description    String?               @db.Text
+  discount_type  PromotionDiscountType @default(percentage) // percentage or fixed
+  discount_value Int // Percentage (0-100) or fixed amount in IDR
+  start_date     DateTime
+  end_date       DateTime
+  quota          Int                   @default(0) // 0 = unlimited
+  used_count     Int                   @default(0) // Track how many times used
+  is_active      Boolean               @default(true)
+  created_by     Int // Admin user ID who created it
+  created_at     DateTime              @default(now())
+  updated_at     DateTime              @updatedAt
+
+  creator              User                  @relation("PromotionCodeCreator", fields: [created_by], references: [id], onDelete: Restrict)
+  usages               PromotionCodeUsage[]
+  subscriptionRequests SubscriptionRequest[]
+
+  @@index([code])
+  @@index([start_date, end_date])
+  @@index([is_active])
+  @@map("promotion_codes")
+}
+
+model PromotionCodeUsage {
+  id                      Int      @id @default(autoincrement())
+  promotion_code_id       Int
+  user_id                 Int
+  subscription_request_id Int? // Link to subscription request
+  discount_amount         Int // Actual discount applied in IDR
+  used_at                 DateTime @default(now())
+
+  promotion_code PromotionCode @relation(fields: [promotion_code_id], references: [id], onDelete: Cascade)
+  user           User          @relation("PromotionCodeUser", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([promotion_code_id])
+  @@index([user_id])
+  @@index([used_at])
+  @@map("promotion_code_usages")
+}
+
+enum PromotionDiscountType {
+  percentage
+  fixed
+}
+
+model AIReportSummary {
+  id              Int      @id @default(autoincrement())
+  child_id        Int
+  start_date      DateTime
+  end_date        DateTime
+  summary         String   @db.Text
+  recommendations String   @db.Text
+  tokens_used     Int      @default(0)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@unique([child_id, start_date, end_date])
+  @@index([child_id])
+  @@index([start_date, end_date])
+  @@map("ai_report_summaries")
+}

@@ -1,0 +1,43 @@
+# Staging Docker Compose - with hot-reload volumes
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+# Note: Similar to dev but with staging environment variables
+# 
+# Note: In staging, we use .env.example files instead of .env files
+# to keep credentials out of version control while allowing the team
+# to have working configurations.
+
+services:
+  backend:
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - /app/node_modules  # Prevent overwriting node_modules
+    environment:
+      NODE_ENV: staging
+    command: npm run dev
+    env_file:
+      - ./backend/.env.example  # Use .env.example in staging
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/next.config.js:/app/next.config.js
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      # Note: We don't mount node_modules as a volume to preserve the installed dependencies
+      - /app/.next  # Prevent overwriting .next
+    environment:
+      NODE_ENV: staging
+    command: sh -c "npm install && npm run dev"
+    env_file:
+      - ./frontend/.env.example  # Use .env.example in staging
+
