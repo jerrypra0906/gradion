@@ -31,20 +31,19 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-RUN groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs nodejs
-
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/prisma.config.ts ./
-COPY --from=build /app/package.json ./
+# Use the image's default `node` user (uid 1000) — matches typical EC2 `ubuntu` for bind mounts.
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --from=build --chown=node:node /app/prisma.config.ts ./
+COPY --from=build --chown=node:node /app/package.json ./
 COPY docker-entrypoint.sh ./
 
-RUN mkdir -p uploads/banners uploads/cms uploads/videos \
-  && chmod +x docker-entrypoint.sh \
-  && chown -R nodejs:nodejs uploads docker-entrypoint.sh
+RUN chmod +x docker-entrypoint.sh \
+  && mkdir -p uploads/banners uploads/cms uploads/videos logs \
+  && chown -R node:node uploads logs docker-entrypoint.sh
 
-USER nodejs
+# Entrypoint starts as root to chown bind-mounted uploads/logs, then drops to `node`.
+USER root
 EXPOSE 3000
 CMD ["./docker-entrypoint.sh"]

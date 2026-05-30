@@ -285,6 +285,7 @@ From repo root:
 
 ```bash
 cd ~/Gradion
+mkdir -p backend/uploads/banners backend/uploads/cms backend/uploads/videos backend/logs
 docker compose up -d --build
 docker compose ps
 ```
@@ -643,7 +644,7 @@ Common log lines and fixes:
 |-------------|-----|
 | `Invalid environment variables` | Check `~/Gradion/.env` and `~/Gradion/backend/.env`. URLs must include `https://`. JWT/session secrets must be **≥32 characters**. Leave optional keys (e.g. `RESEND_FROM_EMAIL=`) empty or omit them. |
 | SSL / `DB_SSL_REQUIRED` errors | Set `DB_SSL_REQUIRED=false` in root `.env` or `backend/.env` (Docker Postgres does not use SSL). |
-| `EACCES` on `uploads` or `logs` | `sudo mkdir -p backend/uploads backend/logs && sudo chown -R 1001:1001 backend/uploads backend/logs` |
+| `EACCES` on `uploads` or `logs` | `sudo mkdir -p backend/uploads/banners backend/uploads/cms backend/uploads/videos backend/logs && sudo chown -R 1000:1000 backend/uploads backend/logs` then `docker compose up -d --build backend`. Latest images also fix permissions on startup via entrypoint. |
 
 **2. Pull latest fixes and rebuild:**
 
