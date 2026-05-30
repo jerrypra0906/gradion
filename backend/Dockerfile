@@ -1,35 +1,18 @@
-# Multi-stage build — optimized for small EC2 instances (avoids copying dev node_modules)
+# Multi-stage build — minimal apt deps (sharp uses prebuilt binaries; no libvips-dev)
 
-# Runtime base: no compilers; libvips for sharp at runtime
-FROM node:20-bullseye-slim AS base-runtime
+FROM node:20-bookworm-slim AS base
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    openssl \
-    ca-certificates \
-    wget \
-    libvips42 \
-  && rm -rf /var/lib/apt/lists/*
-
-# Build base: compilers + libvips headers for native modules (sharp)
-FROM node:20-bullseye-slim AS base-build
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    openssl \
-    ca-certificates \
-    libvips-dev \
-    python3 \
-    make \
-    g++ \
+  && apt-get install -y --no-install-recommends openssl ca-certificates wget \
   && rm -rf /var/lib/apt/lists/*
 
 # Full deps for TypeScript compile
-FROM base-build AS deps
+FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Production deps only (much smaller — avoids OOM when copying to runner)
-FROM base-build AS prod-deps
+# Production deps only
+FROM base AS prod-deps
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
 WORKDIR /app
 ENV DATABASE_URL=${DATABASE_URL}
@@ -40,7 +23,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
   && npx prisma generate
 
 # Compile TypeScript
-FROM base-build AS builder
+FROM base AS builder
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
 WORKDIR /app
 ENV DATABASE_URL=${DATABASE_URL}
@@ -54,14 +37,14 @@ RUN npx prisma generate \
   && npm run build
 
 # Final production image
-FROM base-runtime AS runner
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 nodejs
+RUN groupadd --system --gid 1001 nodejs \
+  && useradd --system --uid 1001 --gid nodejs nodejs
 
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

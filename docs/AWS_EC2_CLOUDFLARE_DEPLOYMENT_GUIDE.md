@@ -544,7 +544,32 @@ docker compose exec backend sh -lc "npx prisma migrate deploy"
 
 Use `--no-cache` only if a normal rebuild still fails.
 
-### 10.5 Docker build slow or fails after `npm run build`
+### 10.5 Docker build slow or fails during `apt-get` / `libvips-dev`
+
+If you see:
+
+```text
+E: Failed to fetch ... libmagickcore-6-arch-config ... Connection reset by peer
+```
+
+**Cause:** Older Dockerfiles installed `libvips-dev` (300+ packages, ~680 MB). That is **not needed** — the `sharp` npm package ships prebuilt binaries.
+
+**Fix:** Pull latest code (minimal Dockerfile) and rebuild:
+
+```bash
+cd ~/Gradion
+git pull
+docker compose build backend
+docker compose up -d
+```
+
+If apt still fails transiently (network blip), retry once:
+
+```bash
+docker compose build backend
+```
+
+### 10.6 Docker build slow or fails after `npm run build`
 
 First backend build on a small EC2 (`t3.micro` / `t3.small`) often takes **4–8 minutes**. That is normal.
 
