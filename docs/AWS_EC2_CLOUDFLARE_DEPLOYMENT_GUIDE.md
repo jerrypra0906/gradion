@@ -2,7 +2,7 @@
 
 This guide deploys **Gradion** to AWS using **two EC2 servers**:
 
-- **Frontend server**: Next.js app behind Nginx at `app.gradion.id`
+- **Frontend server**: Next.js app behind Nginx at `gradion.id`
 - **Backend+DB server**: Fastify API + PostgreSQL (Docker) behind Nginx at `api.gradion.id`
 
 Cloudflare is used for **DNS** for `gradion.id`.
@@ -40,9 +40,9 @@ Cloudflare is used for **DNS** for `gradion.id`.
 
 ## 2) Domain plan (Cloudflare)
 
-Use these subdomains:
+Use these hostnames:
 
-- `app.gradion.id` → **Frontend EC2 public IP**
+- `gradion.id` (apex / `@` record) → **Frontend EC2 public IP**
 - `api.gradion.id` → **Backend EC2 public IP**
 
 Recommended initial Cloudflare setting:
@@ -125,7 +125,7 @@ Associate each Elastic IP to its instance.
 
 You *can* skip Elastic IPs and use the instance **Public IPv4 address** in Cloudflare DNS, but be aware:
 - If you **stop/start** the instance, AWS may change the public IP.
-- That would break `app.gradion.id` / `api.gradion.id` until you update Cloudflare DNS.
+- That would break `gradion.id` / `api.gradion.id` until you update Cloudflare DNS.
 
 Elastic IPs avoid this problem.
 
@@ -155,7 +155,7 @@ In AWS Console:
 
 Cloudflare → your zone `gradion.id` → DNS:
 
-- **A** record: `app` → `<FRONTEND_EIP>`
+- **A** record: `@` → `<FRONTEND_EIP>` (serves `https://gradion.id`)
 - **A** record: `api` → `<BACKEND_EIP>`
 
 Set both to:
@@ -165,7 +165,7 @@ Set both to:
 Verify from your laptop:
 
 ```bash
-nslookup app.gradion.id
+nslookup gradion.id
 nslookup api.gradion.id
 ```
 
@@ -218,6 +218,8 @@ git clone <YOUR_REPO_URL> Gradion
 cd ~/Gradion
 ```
 
+> **Already cloned?** If `~/Gradion` exists, skip `git clone` and run `cd ~/Gradion && git pull` instead.
+
 ### 6.2 Create production env files for Docker Compose
 
 **A) Compose / infra variables** — create `~/Gradion/.env` (repo root):
@@ -230,10 +232,10 @@ Recommended minimum (replace secrets):
 
 ```env
 # ========= URLs =========
-FRONTEND_URL=https://app.gradion.id
+FRONTEND_URL=https://gradion.id
 API_URL=https://api.gradion.id
 PUBLIC_API_URL=https://api.gradion.id/api
-CORS_ORIGIN=https://app.gradion.id
+CORS_ORIGIN=https://gradion.id
 
 # ========= Postgres =========
 POSTGRES_DB=gradion
@@ -312,7 +314,13 @@ docker compose run --rm --no-deps backend npx prisma migrate deploy
 Optional seed:
 
 ```bash
-docker compose exec backend sh -lc "npm run prisma:seed"
+docker compose exec backend sh -lc "npm run prisma:seed:prod"
+```
+
+If the backend container is restarting, use a one-off container instead:
+
+```bash
+docker compose run --rm --no-deps backend npm run prisma:seed:prod
 ```
 
 ### 6.5 Configure Nginx reverse proxy for the API domain
@@ -327,7 +335,13 @@ Paste:
 
 ```nginx
 server {
+  listen 80;
   server_name api.gradion.id;
+
+  # Let's Encrypt HTTP-01 (must not be proxied to the API)
+  location /.well-known/acme-challenge/ {
+    root /var/www/html;
+  }
 
   location / {
     proxy_pass http://127.0.0.1:5001;
@@ -351,7 +365,11 @@ sudo systemctl reload nginx
 
 ### 6.6 Issue HTTPS certificate (Let’s Encrypt)
 
+**Before Certbot:** Cloudflare `@` / `api` records must be **DNS only** (grey cloud). If proxy is on (orange cloud), validation hits Cloudflare and fails.
+
 ```bash
+sudo mkdir -p /var/www/html/.well-known/acme-challenge
+dig +short api.gradion.id   # must show your backend EC2 public IP, not a Cloudflare IP
 sudo certbot --nginx -d api.gradion.id
 ```
 
@@ -372,6 +390,8 @@ cd ~
 git clone <YOUR_REPO_URL> Gradion
 cd ~/Gradion
 ```
+
+> **Already cloned?** If `~/Gradion` exists, skip `git clone` and run `cd ~/Gradion && git pull` instead.
 
 ### 7.2 Create frontend env file
 
@@ -409,14 +429,20 @@ docker ps
 Create Nginx site file:
 
 ```bash
-sudo nano /etc/nginx/sites-available/app.gradion.id
+sudo nano /etc/nginx/sites-available/gradion.id
 ```
 
 Paste:
 
 ```nginx
 server {
-  server_name app.gradion.id;
+  listen 80;
+  server_name gradion.id;
+
+  # Let's Encrypt HTTP-01 (must not be proxied to Next.js)
+  location /.well-known/acme-challenge/ {
+    root /var/www/html;
+  }
 
   location / {
     proxy_pass http://127.0.0.1:5050;
@@ -433,19 +459,40 @@ server {
 Enable + reload:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/app.gradion.id /etc/nginx/sites-enabled/app.gradion.id
+sudo ln -s /etc/nginx/sites-available/gradion.id /etc/nginx/sites-enabled/gradion.id
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
 ### 7.5 Issue HTTPS certificate (Let’s Encrypt)
 
+**Before Certbot:** In Cloudflare DNS, set the `@` record for `gradion.id` to **DNS only** (grey cloud). Remove or grey-cloud any **AAAA** records for `@` while issuing the cert.
+
+Verify DNS points to **this frontend EC2** (not Cloudflare):
+
 ```bash
-sudo certbot --nginx -d app.gradion.id
+dig +short gradion.id
+dig +short AAAA gradion.id   # should be empty while DNS-only on A record only
 ```
 
+Prepare webroot and issue cert:
+
+```bash
+sudo mkdir -p /var/www/html/.well-known/acme-challenge
+sudo certbot --nginx -d gradion.id
+```
+
+If `--nginx` still fails, use webroot instead:
+
+```bash
+sudo certbot certonly --webroot -w /var/www/html -d gradion.id
+sudo certbot install --nginx -d gradion.id
+```
+
+After HTTPS works, you may turn Cloudflare proxy back on and set SSL/TLS mode to **Full (strict)**.
+
 Verify:
-- Open `https://app.gradion.id`
+- Open `https://gradion.id`
 - Login and confirm requests hit `https://api.gradion.id/api`
 
 ---
@@ -510,8 +557,8 @@ docker run -d --name gradion-frontend --restart unless-stopped -p 5050:3000 grad
 
 Make sure backend `.env` has:
 
-- `FRONTEND_URL=https://app.gradion.id`
-- `CORS_ORIGIN=https://app.gradion.id`
+- `FRONTEND_URL=https://gradion.id`
+- `CORS_ORIGIN=https://gradion.id`
 
 Rebuild backend after changes:
 
@@ -522,9 +569,11 @@ docker compose up -d --build backend
 
 ### 10.2 Certbot failing
 
-- Confirm DNS resolves to the correct server.
+- Confirm DNS resolves to the correct server (`dig +short gradion.id` must show your EC2 IP, **not** `104.x`, `172.x`, or `2606:4700:` Cloudflare ranges).
 - Confirm ports 80/443 are open in SG and UFW.
-- Temporarily set Cloudflare record to **DNS only** (not proxied).
+- Set Cloudflare `@` and `api` records to **DNS only** (grey cloud) before running Certbot. Orange-cloud proxy breaks HTTP-01 validation.
+- Ensure Nginx serves `/.well-known/acme-challenge/` locally (see §6.5 / §7.4) — do **not** proxy that path to Next.js/API or you get **500** on the challenge URL.
+- Error example: `2606:4700:... Invalid response ... acme-challenge ... 500` → Cloudflare proxy is on and/or challenge is hitting your app instead of Nginx webroot.
 
 ### 10.3 Postgres disk fills up
 

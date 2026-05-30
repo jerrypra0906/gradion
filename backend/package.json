@@ -15,6 +15,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:prod": "node dist/prisma/seed.js",
     "seed:cms": "tsx scripts/seed-cms-content.ts",
     "create:cms": "tsx scripts/create-cms-from-pages.ts",
     "create:admin": "tsx scripts/create-admin.ts",

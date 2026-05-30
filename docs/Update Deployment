@@ -1,0 +1,40 @@
+# 9) Update / redeploy workflow
+
+### 9.1 Backend server update
+
+```bash
+cd ~/Gradion
+git pull
+docker compose up -d --build
+docker compose logs backend --tail 20
+```
+
+Migrations run automatically on backend startup. To seed test users (production image):
+
+```bash
+docker compose exec backend sh -lc "npm run prisma:seed:prod"
+```
+
+If the backend is restarting, use a one-off container:
+
+```bash
+docker compose run --rm --no-deps backend npm run prisma:seed:prod
+```
+
+### 9.2 Frontend server update
+
+```bash
+cd ~/Gradion
+git pull
+cd frontend
+docker build -t gradion-frontend:prod -f Dockerfile .
+docker rm -f gradion-frontend
+docker run -d --name gradion-frontend --restart unless-stopped -p 5050:3000 gradion-frontend:prod
+```
+
+### Test login (after seed)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@gradion.id` | `password123` |
+| Parent | `parent@gradion.id` | `password123` |
