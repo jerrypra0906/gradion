@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import { FastifyInstance, FastifyPluginOptions, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
@@ -98,6 +98,15 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(6),
 });
 
+function rateLimitKeyFromEmail(prefix: string) {
+  return (request: FastifyRequest) => {
+    const body = request.body as { email?: string } | undefined;
+    const email =
+      typeof body?.email === 'string' ? body.email.toLowerCase().trim() : 'unknown';
+    return `${prefix}:${request.ip ?? 'unknown'}:${email}`;
+  };
+}
+
 export async function authRoutes(
   fastify: FastifyInstance,
   _options: FastifyPluginOptions
@@ -116,13 +125,7 @@ export async function authRoutes(
       timeWindow: config.security.loginWindowMs,
       global: false,
       hook: 'preHandler' as const,
-      keyGenerator: (request: { ip?: string; body?: { email?: string } }) => {
-        const email =
-          typeof request.body?.email === 'string'
-            ? request.body.email.toLowerCase().trim()
-            : 'unknown';
-        return `auth-login:${request.ip ?? 'unknown'}:${email}`;
-      },
+      keyGenerator: rateLimitKeyFromEmail('auth-login'),
     },
   };
 
@@ -132,13 +135,7 @@ export async function authRoutes(
       timeWindow: config.security.loginWindowMs,
       global: false,
       hook: 'preHandler' as const,
-      keyGenerator: (request: { ip?: string; body?: { email?: string } }) => {
-        const email =
-          typeof request.body?.email === 'string'
-            ? request.body.email.toLowerCase().trim()
-            : 'unknown';
-        return `auth-forgot:${request.ip ?? 'unknown'}:${email}`;
-      },
+      keyGenerator: rateLimitKeyFromEmail('auth-forgot'),
     },
   };
 
