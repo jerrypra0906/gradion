@@ -254,7 +254,8 @@ SESSION_SECRET=REPLACE_WITH_LONG_RANDOM_32+_CHARS
 
 # ========= Optional: Email =========
 RESEND_API_KEY=
-RESEND_FROM_EMAIL=
+# Omit RESEND_FROM_EMAIL until you have a verified sender in Resend (do not leave blank)
+# RESEND_FROM_EMAIL=noreply@gradion.id
 RESEND_FROM_NAME=Gradion
 
 # ========= Optional: AI =========
@@ -691,7 +692,7 @@ Common log lines and fixes:
 
 | Log message | Fix |
 |-------------|-----|
-| `Invalid environment variables` | Check `~/Gradion/.env` and `~/Gradion/backend/.env`. URLs must include `https://`. JWT/session secrets must be **≥32 characters**. Leave optional keys (e.g. `RESEND_FROM_EMAIL=`) empty or omit them. |
+| `Invalid environment variables` / `RESEND_FROM_EMAIL: Invalid email` | Remove `RESEND_FROM_EMAIL=` from `~/Gradion/backend/.env` (omit the line entirely until Resend is configured). Do not set it to an empty string. |
 | SSL / `DB_SSL_REQUIRED` errors | Set `DB_SSL_REQUIRED=false` in root `.env` or `backend/.env` (Docker Postgres does not use SSL). |
 | `EACCES` on `uploads` or `logs` | `sudo mkdir -p backend/uploads/banners backend/uploads/cms backend/uploads/videos backend/logs && sudo chown -R 1000:1000 backend/uploads backend/logs` then `docker compose up -d --build backend`. Latest images also fix permissions on startup via entrypoint. |
 

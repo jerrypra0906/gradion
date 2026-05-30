@@ -3,9 +3,12 @@ import { z } from 'zod';
 
 dotenv.config();
 
-/** Treat empty env vars as unset (common in production .env files). */
-const emptyToUndefined = (val: unknown) =>
-  val === '' || val === null ? undefined : val;
+/** Treat empty/whitespace env vars as unset (common in production .env files). */
+const emptyToUndefined = (val: unknown) => {
+  if (val === null || val === undefined) return undefined;
+  if (typeof val === 'string' && val.trim() === '') return undefined;
+  return val;
+};
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 const optionalEmail = z.preprocess(emptyToUndefined, z.string().email().optional());
