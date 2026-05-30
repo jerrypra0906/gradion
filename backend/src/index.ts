@@ -91,7 +91,7 @@ async function buildServer() {
     origin: (origin, cb) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return cb(null, true);
-      const allowedOrigins = config.corsOrigin.split(',');
+      const allowedOrigins = config.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
       // Check if origin is in allowed list or is localhost
       if (allowedOrigins.includes(origin) || origin.includes('localhost')) {
         cb(null, true);
@@ -127,7 +127,7 @@ async function buildServer() {
   server.addHook('onSend', async (request, reply) => {
     if (request.url.startsWith('/uploads/')) {
       const origin = request.headers.origin;
-      const allowedOrigins = config.corsOrigin.split(',');
+      const allowedOrigins = config.corsOrigin.split(',').map((o) => o.trim()).filter(Boolean);
       // Set Access-Control-Allow-Origin header
       if (origin && (allowedOrigins.includes(origin) || origin.includes('localhost'))) {
         reply.header('Access-Control-Allow-Origin', origin);

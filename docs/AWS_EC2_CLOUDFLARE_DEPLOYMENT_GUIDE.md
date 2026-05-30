@@ -556,17 +556,41 @@ docker run -d --name gradion-frontend --restart unless-stopped -p 5050:3000 grad
 
 ### 10.1 CORS errors
 
-Make sure backend `.env` has:
+Browser error: `No 'Access-Control-Allow-Origin' header` when logging in from `https://gradion.id`.
 
-- `FRONTEND_URL=https://gradion.id`
-- `CORS_ORIGIN=https://gradion.id`
+**Cause:** `CORS_ORIGIN` on the backend still points at `localhost` or the wrong domain.
 
-Rebuild backend after changes:
+**Fix:** Set these in **`~/Gradion/.env`** (repo root — Docker Compose reads this file for `${CORS_ORIGIN}`):
+
+```env
+FRONTEND_URL=https://gradion.id
+API_URL=https://api.gradion.id
+PUBLIC_API_URL=https://api.gradion.id/api
+CORS_ORIGIN=https://gradion.id
+```
+
+If you also serve `www.gradion.id`, use a comma-separated list:
+
+```env
+CORS_ORIGIN=https://gradion.id,https://www.gradion.id
+```
+
+Mirror the same values in `~/Gradion/backend/.env`, then recreate the backend container:
 
 ```bash
 cd ~/Gradion
-docker compose up -d --build backend
+docker compose up -d --force-recreate backend
 ```
+
+Verify CORS preflight:
+
+```bash
+curl -i -X OPTIONS "https://api.gradion.id/api/auth/login" \
+  -H "Origin: https://gradion.id" \
+  -H "Access-Control-Request-Method: POST"
+```
+
+You should see `access-control-allow-origin: https://gradion.id` in the response headers.
 
 ### 10.2 Certbot failing
 
