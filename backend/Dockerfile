@@ -1,4 +1,4 @@
-# Single-path build for small EC2 (avoids parallel npm ci + duplicate node_modules copies)
+# Single-path build for small EC2 (full npm ci for compile, prune dev deps after)
 
 FROM node:20-bookworm-slim AS base
 RUN apt-get update \
@@ -10,21 +10,18 @@ WORKDIR /app
 
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
 ENV DATABASE_URL=${DATABASE_URL}
-ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# Install TypeScript temporarily for compile, then remove dev tooling
-RUN npm install --no-save typescript@5.3.3 \
-  && npx prisma generate \
+RUN npx prisma generate \
   && npm run build \
-  && npm uninstall typescript \
+  && npm prune --omit=dev \
   && npm cache clean --force
 
 FROM base AS runner

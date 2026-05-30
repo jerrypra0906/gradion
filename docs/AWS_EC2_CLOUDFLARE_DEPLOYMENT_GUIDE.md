@@ -571,13 +571,13 @@ docker compose build backend
 
 ### 10.6 Docker build slow or fails after `npm run build`
 
-First backend build on a small EC2 (`t3.micro` / `t3.small`) often takes **4–8 minutes**. That is normal.
+First backend build on **`t3.small`** (2 GB RAM) often takes **3–6 minutes**. That is normal for this stack.
 
-If the build stops after `npm run build` with only `failed to execute bake: exit status 1` and no error line, the instance likely ran **out of memory or disk** while copying `node_modules`.
+If the build stops after `npm run build` with only `failed to execute bake: exit status 1`, check **disk space first**, then memory:
 
 **Fix (try in order):**
 
-1. Pull latest Dockerfile (single-stage build path — one `npm ci`, no parallel copies):
+1. Pull latest Dockerfile (single build path — one `npm ci`):
 
 ```bash
 cd ~/Gradion
@@ -585,23 +585,23 @@ git pull
 docker compose build backend
 ```
 
-2. See the real error:
+2. Capture the real error:
 
 ```bash
-docker compose build --progress=plain backend 2>&1 | tee /tmp/docker-build.log
+docker compose --progress plain build backend 2>&1 | tee /tmp/docker-build.log
 tail -30 /tmp/docker-build.log
 ```
 
-3. Free disk and add swap (see §10.6 step 3 below), then rebuild.
-
-2. Free disk space:
+3. Free disk space (common on default 8 GB EBS volumes):
 
 ```bash
 docker system prune -f
 df -h
 ```
 
-3. Add **2 GB swap** (helps `t3.micro`):
+Ensure **≥5 GB free** before building. If the volume is full, expand EBS in AWS or use at least a **20 GB** root volume.
+
+4. Optional: add **2 GB swap** for Docker build headroom on 2 GB RAM:
 
 ```bash
 sudo fallocate -l 2G /swapfile
@@ -612,9 +612,11 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 free -h
 ```
 
-4. Rebuild without `--no-cache` unless debugging.
+5. Rebuild (no `--no-cache` unless debugging):
 
-5. If still failing, use **t3.small** temporarily for the first build.
+```bash
+docker compose build backend && docker compose up -d
+```
 
 
 ## 11) Optional hardening (recommended next)
