@@ -573,18 +573,26 @@ docker compose build backend
 
 First backend build on a small EC2 (`t3.micro` / `t3.small`) often takes **4–8 minutes**. That is normal.
 
-If the build fails **after** `npm run build` (during `COPY ... node_modules`), the instance likely ran **out of memory or disk**.
+If the build stops after `npm run build` with only `failed to execute bake: exit status 1` and no error line, the instance likely ran **out of memory or disk** while copying `node_modules`.
 
 **Fix (try in order):**
 
-1. Pull latest Dockerfile (production-only `node_modules` in the final image):
+1. Pull latest Dockerfile (single-stage build path — one `npm ci`, no parallel copies):
 
 ```bash
 cd ~/Gradion
 git pull
 docker compose build backend
-docker compose up -d
 ```
+
+2. See the real error:
+
+```bash
+docker compose build --progress=plain backend 2>&1 | tee /tmp/docker-build.log
+tail -30 /tmp/docker-build.log
+```
+
+3. Free disk and add swap (see §10.6 step 3 below), then rebuild.
 
 2. Free disk space:
 

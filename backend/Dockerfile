@@ -1,44 +1,35 @@
-# Multi-stage build — minimal apt deps (sharp uses prebuilt binaries; no libvips-dev)
+# Single-path build for small EC2 (avoids parallel npm ci + duplicate node_modules copies)
 
 FROM node:20-bookworm-slim AS base
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates wget \
   && rm -rf /var/lib/apt/lists/*
 
-# Full deps for TypeScript compile
-FROM base AS deps
+FROM base AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Production deps only
-FROM base AS prod-deps
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
-WORKDIR /app
 ENV DATABASE_URL=${DATABASE_URL}
-COPY package.json package-lock.json ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
-  && npx prisma generate
+ENV NODE_ENV=production
 
-# Compile TypeScript
-FROM base AS builder
-ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
-WORKDIR /app
-ENV DATABASE_URL=${DATABASE_URL}
-COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY tsconfig.json ./
 COPY src ./src
-RUN npx prisma generate \
-  && npm run build
 
-# Final production image
+# Install TypeScript temporarily for compile, then remove dev tooling
+RUN npm install --no-save typescript@5.3.3 \
+  && npx prisma generate \
+  && npm run build \
+  && npm uninstall typescript \
+  && npm cache clean --force
+
 FROM base AS runner
 WORKDIR /app
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
@@ -46,12 +37,11 @@ ENV HOST=0.0.0.0
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nodejs
 
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/scripts ./scripts
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/prisma.config.ts ./
+COPY --from=build /app/package.json ./
 
 RUN mkdir -p uploads/banners uploads/cms uploads/videos \
   && chown -R nodejs:nodejs uploads
