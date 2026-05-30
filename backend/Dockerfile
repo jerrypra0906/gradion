@@ -1,74 +1,78 @@
-# Multi-stage build for production optimization
-FROM node:20-bullseye-slim AS base
+# Multi-stage build — optimized for small EC2 instances (avoids copying dev node_modules)
 
-# Install required system libraries (OpenSSL 1.1 for Prisma, libvips for sharp)
+# Runtime base: no compilers; libvips for sharp at runtime
+FROM node:20-bullseye-slim AS base-runtime
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     openssl \
     ca-certificates \
     wget \
+    libvips42 \
+  && rm -rf /var/lib/apt/lists/*
+
+# Build base: compilers + libvips headers for native modules (sharp)
+FROM node:20-bullseye-slim AS base-build
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    openssl \
+    ca-certificates \
     libvips-dev \
     python3 \
     make \
     g++ \
   && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies only when needed
-FROM base AS deps
+# Full deps for TypeScript compile
+FROM base-build AS deps
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
 
-# Copy package files
-COPY package.json package-lock.json* ./
-RUN npm ci
-
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-
-# Prisma 7 loads prisma.config.ts during `generate` and requires DATABASE_URL to be set.
-# Use a placeholder at build time; runtime gets the real URL from docker-compose / orchestrator.
+# Production deps only (much smaller — avoids OOM when copying to runner)
+FROM base-build AS prod-deps
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
+WORKDIR /app
 ENV DATABASE_URL=${DATABASE_URL}
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev \
+  && npx prisma generate
 
+# Compile TypeScript
+FROM base-build AS builder
+ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
+WORKDIR /app
+ENV DATABASE_URL=${DATABASE_URL}
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 COPY tsconfig.json ./
 COPY src ./src
+RUN npx prisma generate \
+  && npm run build
 
-# prisma and @prisma/client must be the same version (see package.json)
-RUN npx prisma generate
-
-# Build the application
-RUN npm run build
-
-# Production image, copy all the files and run the app
-FROM base AS runner
+# Final production image
+FROM base-runtime AS runner
 WORKDIR /app
-
 ENV NODE_ENV=production
-
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nodejs
-
-# Copy necessary files
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts* ./
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/scripts ./scripts
-
-# Create uploads directory with banners subdirectory
-RUN mkdir -p uploads/banners && chown -R nodejs:nodejs uploads
-
-USER nodejs
-
-EXPOSE 3000
-
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-CMD ["node", "dist/index.js"]
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nodejs
 
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/scripts ./scripts
+
+RUN mkdir -p uploads/banners uploads/cms uploads/videos \
+  && chown -R nodejs:nodejs uploads
+
+USER nodejs
+EXPOSE 3000
+CMD ["node", "dist/index.js"]

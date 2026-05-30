@@ -48,8 +48,7 @@ Thumbs.db
 *.swo
 *~
 
-# Docker
-.dockerignore
+# Docker — track backend/.dockerignore in repo
 
 # Temporary files
 *.tmp

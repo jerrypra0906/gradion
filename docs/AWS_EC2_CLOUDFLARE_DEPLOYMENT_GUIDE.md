@@ -289,6 +289,8 @@ docker compose up -d --build
 docker compose ps
 ```
 
+> **Note:** First backend build on EC2 can take several minutes. You do **not** need `--no-cache` for normal deploys — use `docker compose build backend` after `git pull`.
+
 ### 6.4 Run database migrations
 
 Run Prisma migrations **inside** the backend container:
@@ -530,22 +532,56 @@ Cannot find module '.../query_compiler_fast_bg.postgresql.wasm-base64.js'
 
 **Cause:** `prisma` CLI and `@prisma/client` were on different versions (e.g. 7.8 vs 7.2).
 
-**Fix:** Pull latest code, then rebuild without cache:
+**Fix:** Pull latest code, then rebuild:
 
 ```bash
 cd ~/Gradion
 git pull
-docker compose build --no-cache backend
+docker compose build backend
 docker compose up -d
 docker compose exec backend sh -lc "npx prisma migrate deploy"
 ```
 
-If you still see the error, confirm aligned versions:
+Use `--no-cache` only if a normal rebuild still fails.
+
+### 10.5 Docker build slow or fails after `npm run build`
+
+First backend build on a small EC2 (`t3.micro` / `t3.small`) often takes **4–8 minutes**. That is normal.
+
+If the build fails **after** `npm run build` (during `COPY ... node_modules`), the instance likely ran **out of memory or disk**.
+
+**Fix (try in order):**
+
+1. Pull latest Dockerfile (production-only `node_modules` in the final image):
 
 ```bash
-docker compose run --rm backend sh -lc "npm ls prisma @prisma/client"
-# Both should show the same version (e.g. 7.8.0)
+cd ~/Gradion
+git pull
+docker compose build backend
+docker compose up -d
 ```
+
+2. Free disk space:
+
+```bash
+docker system prune -f
+df -h
+```
+
+3. Add **2 GB swap** (helps `t3.micro`):
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h
+```
+
+4. Rebuild without `--no-cache` unless debugging.
+
+5. If still failing, use **t3.small** temporarily for the first build.
 
 
 ## 11) Optional hardening (recommended next)
