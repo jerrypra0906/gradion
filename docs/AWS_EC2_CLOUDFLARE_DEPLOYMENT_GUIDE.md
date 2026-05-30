@@ -293,11 +293,19 @@ docker compose ps
 
 ### 6.4 Run database migrations
 
-Run Prisma migrations **inside** the backend container:
+Migrations run automatically when the backend container starts (`docker-entrypoint.sh`). After the first deploy, verify:
 
 ```bash
 cd ~/Gradion
-docker compose exec backend sh -lc "npx prisma migrate deploy"
+docker compose logs backend --tail 30
+```
+
+You should see `Running database migrations...` followed by `Starting API server...`.
+
+To run migrations manually (e.g. if the container is restarting):
+
+```bash
+docker compose run --rm --no-deps backend npx prisma migrate deploy
 ```
 
 Optional seed:
@@ -616,6 +624,47 @@ free -h
 
 ```bash
 docker compose build backend && docker compose up -d
+```
+
+### 10.7 Backend container keeps restarting
+
+If `docker compose exec backend ...` says **"Container is restarting"**:
+
+**1. Read the crash reason:**
+
+```bash
+cd ~/Gradion
+docker compose logs backend --tail 80
+```
+
+Common log lines and fixes:
+
+| Log message | Fix |
+|-------------|-----|
+| `Invalid environment variables` | Check `~/Gradion/.env` and `~/Gradion/backend/.env`. URLs must include `https://`. JWT/session secrets must be **≥32 characters**. Leave optional keys (e.g. `RESEND_FROM_EMAIL=`) empty or omit them. |
+| SSL / `DB_SSL_REQUIRED` errors | Set `DB_SSL_REQUIRED=false` in root `.env` or `backend/.env` (Docker Postgres does not use SSL). |
+| `EACCES` on `uploads` or `logs` | `sudo mkdir -p backend/uploads backend/logs && sudo chown -R 1001:1001 backend/uploads backend/logs` |
+
+**2. Pull latest fixes and rebuild:**
+
+```bash
+git pull
+docker compose up -d --build backend
+docker compose logs backend --tail 30
+```
+
+**3. Run migrations while the container is down** (one-off container, same env):
+
+```bash
+docker compose stop backend
+docker compose run --rm --no-deps backend npx prisma migrate deploy
+docker compose up -d backend
+```
+
+**4. Verify health:**
+
+```bash
+curl -s http://127.0.0.1:5001/api/health
 ```
 
 

@@ -3,6 +3,14 @@ import { z } from 'zod';
 
 dotenv.config();
 
+/** Treat empty env vars as unset (common in production .env files). */
+const emptyToUndefined = (val: unknown) =>
+  val === '' || val === null ? undefined : val;
+
+const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
+const optionalEmail = z.preprocess(emptyToUndefined, z.string().email().optional());
+const optionalUrl = z.preprocess(emptyToUndefined, z.string().url().optional());
+
 const envSchema = z.object({
   // Server
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -19,7 +27,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   DB_POOL_MIN: z.coerce.number().default(2),
   DB_POOL_MAX: z.coerce.number().default(10),
-  DB_SSL_REQUIRED: z.coerce.boolean().default(true),
+  DB_SSL_REQUIRED: z.coerce.boolean().default(false),
   DB_PORT: z.coerce.number().optional(),
 
   // Auth
@@ -31,15 +39,15 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(32),
 
   // AI — Gradion uses Google Gemini as primary (TD); OpenAI remains optional fallback
-  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: optionalString,
   GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
   GEMINI_VIDEO_MODEL: z.string().default('gemini-1.5-pro'),
   AI_VIDEO_MIN_TOKEN_CHARGE: z.coerce.number().default(3500),
   VIDEO_FIDELITY_MAX_FILE_MB: z.coerce.number().default(100),
-  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: optionalString,
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_MAX_TOKENS: z.coerce.number().default(1000),
-  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: optionalString,
   // Use a known-stable Anthropic model id (avoid "-latest" which may not exist on all accounts)
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
   AI_TOKEN_LIMIT_FREE_TRIAL: z.coerce.number().default(2000),
@@ -52,16 +60,16 @@ const envSchema = z.object({
   AI_MONTHLY_SPEND_LIMIT: z.coerce.number().default(100),
 
   // Email
-  RESEND_API_KEY: z.string().optional(),
-  RESEND_FROM_EMAIL: z.string().email().optional(),
+  RESEND_API_KEY: optionalString,
+  RESEND_FROM_EMAIL: optionalEmail,
   RESEND_FROM_NAME: z.string().default('Gradion'),
-  SUPPORT_EMAIL: z.string().email().optional(),
+  SUPPORT_EMAIL: optionalEmail,
   EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS: z.coerce.number().default(24),
   EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES: z.coerce.number().default(10),
 
   // Payment - Midtrans
-  MIDTRANS_SERVER_KEY: z.string().optional(),
-  MIDTRANS_CLIENT_KEY: z.string().optional(),
+  MIDTRANS_SERVER_KEY: optionalString,
+  MIDTRANS_CLIENT_KEY: optionalString,
   MIDTRANS_IS_PRODUCTION: z.preprocess(
     (val) => {
       if (typeof val === 'string') {
@@ -73,18 +81,18 @@ const envSchema = z.object({
     },
     z.boolean().default(false)
   ),
-  MIDTRANS_WEBHOOK_SECRET: z.string().optional(),
+  MIDTRANS_WEBHOOK_SECRET: optionalString,
   MIDTRANS_FEE_PERCENTAGE: z.coerce.number().min(0).max(100).default(2.5), // Default 2.5% to cover most payment methods
 
   // Storage
-  R2_ACCOUNT_ID: z.string().optional(),
-  R2_ACCESS_KEY_ID: z.string().optional(),
-  R2_SECRET_ACCESS_KEY: z.string().optional(),
-  R2_BUCKET_NAME: z.string().optional(),
-  R2_PUBLIC_URL: z.string().url().optional(),
+  R2_ACCOUNT_ID: optionalString,
+  R2_ACCESS_KEY_ID: optionalString,
+  R2_SECRET_ACCESS_KEY: optionalString,
+  R2_BUCKET_NAME: optionalString,
+  R2_PUBLIC_URL: optionalUrl,
   // Supabase Storage
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  SUPABASE_URL: optionalUrl,
+  SUPABASE_SERVICE_ROLE_KEY: optionalString,
   SUPABASE_STORAGE_BUCKET: z.string().default('uploads'),
 
   // CORS
@@ -92,8 +100,8 @@ const envSchema = z.object({
   CORS_CREDENTIALS: z.coerce.boolean().default(true),
 
   // Google OAuth
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CLIENT_ID: optionalString,
+  GOOGLE_CLIENT_SECRET: optionalString,
 
   // Rate Limiting
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),

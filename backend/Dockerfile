@@ -39,10 +39,12 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/package.json ./
+COPY docker-entrypoint.sh ./
 
 RUN mkdir -p uploads/banners uploads/cms uploads/videos \
-  && chown -R nodejs:nodejs uploads
+  && chmod +x docker-entrypoint.sh \
+  && chown -R nodejs:nodejs uploads docker-entrypoint.sh
 
 USER nodejs
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["./docker-entrypoint.sh"]
