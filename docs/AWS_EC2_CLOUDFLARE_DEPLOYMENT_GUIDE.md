@@ -218,9 +218,9 @@ git clone <YOUR_REPO_URL> Gradion
 cd ~/Gradion
 ```
 
-### 6.2 Create production env file for Docker Compose
+### 6.2 Create production env files for Docker Compose
 
-Create `~/Gradion/.env`:
+**A) Compose / infra variables** — create `~/Gradion/.env` (repo root):
 
 ```bash
 nano ~/Gradion/.env
@@ -261,6 +261,23 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 ENABLE_VIDEO_FIDELITY=true
 ```
+
+**B) Backend app secrets (optional but recommended)** — copy the example and edit:
+
+```bash
+cp ~/Gradion/backend/.env.example ~/Gradion/backend/.env
+nano ~/Gradion/backend/.env
+```
+
+Set at least:
+
+- `NODE_ENV=production`
+- `FRONTEND_URL`, `API_URL`, `PUBLIC_API_URL`, `CORS_ORIGIN` (same as root `.env`)
+- `JWT_SECRET`, `JWT_REFRESH_SECRET`, `SESSION_SECRET` (same long random values as root `.env`)
+- `DB_SSL_REQUIRED=false` (Postgres is on the same Docker network)
+- Optional: `GEMINI_API_KEY`, `RESEND_*`, `GOOGLE_CLIENT_*`, Midtrans, R2 storage
+
+> **Note:** If `backend/.env` is missing, older Compose versions error on `docker compose exec`. Either create the file above or pull the latest `docker-compose.yml` (uses `required: false` for that path).
 
 ### 6.3 Start backend stack with Docker Compose
 
@@ -503,7 +520,33 @@ docker compose up -d --build backend
 - Increase EBS volume size (AWS) and extend filesystem.
 - Add backup/rotation for logs and periodic `pg_dump`.
 
----
+### 10.4 `prisma generate` fails during Docker build
+
+Error example:
+
+```text
+Cannot find module '.../query_compiler_fast_bg.postgresql.wasm-base64.js'
+```
+
+**Cause:** `prisma` CLI and `@prisma/client` were on different versions (e.g. 7.8 vs 7.2).
+
+**Fix:** Pull latest code, then rebuild without cache:
+
+```bash
+cd ~/Gradion
+git pull
+docker compose build --no-cache backend
+docker compose up -d
+docker compose exec backend sh -lc "npx prisma migrate deploy"
+```
+
+If you still see the error, confirm aligned versions:
+
+```bash
+docker compose run --rm backend sh -lc "npm ls prisma @prisma/client"
+# Both should show the same version (e.g. 7.8.0)
+```
+
 
 ## 11) Optional hardening (recommended next)
 

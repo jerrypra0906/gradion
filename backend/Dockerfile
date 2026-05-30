@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
-RUN npm install --production=false
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -27,13 +27,17 @@ WORKDIR /app
 
 # Prisma 7 loads prisma.config.ts during `generate` and requires DATABASE_URL to be set.
 # Use a placeholder at build time; runtime gets the real URL from docker-compose / orchestrator.
-# Override with: docker compose build --build-arg DATABASE_URL=...
 ARG DATABASE_URL=postgresql://gradion_user:build_placeholder@127.0.0.1:5432/gradion?schema=public
 ENV DATABASE_URL=${DATABASE_URL}
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+COPY tsconfig.json ./
+COPY src ./src
 
+# prisma and @prisma/client must be the same version (see package.json)
 RUN npx prisma generate
 
 # Build the application

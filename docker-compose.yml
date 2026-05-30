@@ -56,8 +56,9 @@ services:
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-500}
     env_file:
-      # Load real secrets if present, fallback to example defaults.
-      - ./backend/.env
+      # Optional secrets file; .env.example provides safe defaults when missing.
+      - path: ./backend/.env
+        required: false
       - ./backend/.env.example
     depends_on:
       postgres:
