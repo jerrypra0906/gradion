@@ -22,6 +22,7 @@ COPY src ./src
 
 RUN npx prisma generate \
   && npm run build \
+  && cp -r src/data dist/data \
   && npx tsc -p tsconfig.seed.json \
   && npm prune --omit=dev \
   && npm cache clean --force

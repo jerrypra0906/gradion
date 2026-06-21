@@ -41,6 +41,22 @@ export async function childrenRoutes(
   fastify: FastifyInstance,
   _options: FastifyPluginOptions
 ) {
+  fastify.get(
+    '/initial-observation-template/active',
+    { preHandler: [authenticate, requireRole('parent', 'therapist', 'consultant', 'admin')] },
+    async (_request, reply) => {
+      const row = await prisma.initialObservationTemplate.findFirst({
+        where: { is_active: true },
+        orderBy: { updated_at: 'desc' },
+      });
+      if (!row) {
+        reply.code(404);
+        return { success: false, error: 'No active template found' };
+      }
+      return { success: true, data: row };
+    }
+  );
+
   // Get all children (for parent or therapist)
   fastify.get(
     '/',

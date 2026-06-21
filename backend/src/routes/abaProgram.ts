@@ -20,6 +20,16 @@ import {
 import { ensureGuidedFlow } from '../services/abaProgram.service.js';
 import { translateWeeklyAbaPlanJson } from '../services/abaProgram.service.js';
 import { listMasterPrograms, syncWeeklyPlanToMasterPrograms } from '../services/abaMasterProgram.service.js';
+import {
+  buildObservationText,
+  findSimilarAutismCases,
+  syncAutismCaseFromWeeklyPlan,
+} from '../services/abaAutismCase.service.js';
+import {
+  getEnhancedLearningContextForChild,
+  getPreviousWeekSessionContext,
+  recordLearningInsightForWeek,
+} from '../services/abaProgramLearning.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -183,7 +193,33 @@ export async function abaProgramRoutes(
           orderBy: { week_start: 'desc' },
         });
 
-        const estimated = 1200;
+        const priorWeekCount = await prisma.childAbaProgramWeek.count({
+          where: { child_id: childId, status: 'completed' },
+        });
+        const isFirstProgram = priorWeekCount === 0;
+
+        const prevSessionContext = prevWeek ? await getPreviousWeekSessionContext(prevWeek.id) : null;
+        const learningInsights = await getEnhancedLearningContextForChild(childId, 4);
+
+        const observationText = buildObservationText({
+          initialObservation: child.initial_observation,
+          assessmentMarkdown: assessmentMd,
+          diagnosis: child.diagnosis,
+          childName: child.name,
+        });
+
+        const similarCases = await findSimilarAutismCases({
+          observationText,
+          take: 5,
+        });
+
+        const goals = await prisma.goal.findMany({
+          where: { child_id: childId, status: 'active' },
+          select: { title: true, description: true, target_date: true },
+          take: 10,
+        });
+
+        const estimated = 1400;
         const quota = await checkTokenQuota(user.id, estimated);
         if (!quota.hasQuota) {
           reply.code(403);
@@ -198,8 +234,15 @@ export async function abaProgramRoutes(
           childName: child.name,
           diagnosis: child.diagnosis,
           assessmentMarkdown: assessmentMd,
-          previousTherapyNotesJson: prevWeek?.therapy_notes_json ?? prevWeek?.plan_json ?? null,
+          initialObservationJson: child.initial_observation,
+          previousTherapyNotesJson: prevSessionContext?.therapy_notes_json ?? prevWeek?.therapy_notes_json ?? null,
+          previousGuidedResultsJson: prevSessionContext?.guided_results_json ?? null,
+          learningInsights,
+          similarAutismCases: similarCases,
           masterPrograms,
+          isFirstProgram,
+          statedGoals: goals,
+          clinicalReviewComments: learningInsights?.clinical_reviews ?? null,
         });
 
         if (!ai) {
@@ -218,6 +261,17 @@ export async function abaProgramRoutes(
           language: lang,
         });
         const mainstream = Boolean(plan?.mainstream_goal_met);
+
+        await syncAutismCaseFromWeeklyPlan({
+          childId,
+          childName: child.name,
+          language: lang,
+          initialObservation: child.initial_observation,
+          assessmentMarkdown: assessmentMd,
+          diagnosis: child.diagnosis,
+          planJson: plan,
+          isFirstProgram,
+        });
 
         const week = await prisma.childAbaProgramWeek.upsert({
           where: { child_id_week_start: { child_id: childId, week_start: weekStart } },
@@ -444,6 +498,8 @@ export async function abaProgramRoutes(
           return s;
         });
 
+        await recordLearningInsightForWeek(weekId);
+
         return { success: true, data: { session: updated } };
       } catch (error: unknown) {
         logger.error({ err: error }, 'Failed to complete guided ABA session');
@@ -596,6 +652,8 @@ export async function abaProgramRoutes(
           });
           return s;
         });
+
+        await recordLearningInsightForWeek(weekId);
 
         return {
           success: true,

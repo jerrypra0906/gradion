@@ -87,6 +87,8 @@ model Child {
   aiReportSummaries    AIReportSummary[]
   videoFidelityJobs    VideoFidelityJob[]
   abaProgramWeeks      ChildAbaProgramWeek[]
+  abaAutismCases       AbaAutismCase[]
+  abaProgramLearningInsights AbaProgramLearningInsight[]
 
   @@map("children")
 }
@@ -145,10 +147,49 @@ model ChildAbaProgramWeek {
 
   child    Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
   sessions ChildAbaProgramSession[]
+  learningInsights AbaProgramLearningInsight[]
 
   @@unique([child_id, week_start])
   @@index([child_id])
   @@map("child_aba_program_weeks")
+}
+
+/// Master library of autism case observations paired with initial ABA programs (mock + AI-generated).
+model AbaAutismCase {
+  id                 String   @id
+  case_number        Int?
+  observation_text   String   @db.Text
+  observation_json   Json?
+  initial_programs   Json
+  plan_snapshot_json Json?
+  source             String   // 'mock' | 'generated'
+  child_id           Int?
+  language           String   @default("id")
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  child Child? @relation(fields: [child_id], references: [id], onDelete: SetNull)
+
+  @@index([source])
+  @@index([child_id])
+  @@index([language])
+  @@map("aba_autism_cases")
+}
+
+/// Per-child learning insights derived from completed weekly ABA sessions (feeds future plan generation).
+model AbaProgramLearningInsight {
+  id           Int      @id @default(autoincrement())
+  child_id     Int
+  week_id      Int?
+  insight_json Json
+  created_at   DateTime @default(now())
+
+  child Child               @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  week  ChildAbaProgramWeek? @relation(fields: [week_id], references: [id], onDelete: SetNull)
+
+  @@index([child_id])
+  @@index([week_id])
+  @@map("aba_program_learning_insights")
 }
 
 model ChildAbaProgramSession {

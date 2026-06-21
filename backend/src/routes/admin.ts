@@ -5,6 +5,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 import { EmailService } from '../services/email.service.js';
 import { formatErrorMessage } from '../utils/errorResponse.js';
 import { Prisma, SubscriptionPlan } from '@prisma/client';
+import { listAutismCases, seedMockAutismCases } from '../services/abaAutismCase.service.js';
 
 export async function adminRoutes(
   fastify: FastifyInstance,
@@ -49,6 +50,54 @@ export async function adminRoutes(
       ]);
 
       return { success: true, data: { rows, total } };
+    }
+  );
+
+  // -----------------------------
+  // ABA Autism Cases (observation + initial programs, admin only)
+  // -----------------------------
+  fastify.get(
+    '/aba-autism-cases',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request) => {
+      const q = (request.query || {}) as {
+        source?: string;
+        lang?: string;
+        search?: string;
+        take?: string;
+        skip?: string;
+      };
+      const source =
+        q.source === 'mock' || q.source === 'generated' ? q.source : 'all';
+      const language = q.lang === 'en' ? 'en' : q.lang === 'id' ? 'id' : undefined;
+      const search = String(q.search || '').trim();
+      const take = Math.max(1, Math.min(500, parseInt(String(q.take || '100'), 10) || 100));
+      const skip = Math.max(0, parseInt(String(q.skip || '0'), 10) || 0);
+
+      const data = await listAutismCases({
+        source,
+        language,
+        search,
+        take,
+        skip,
+      });
+
+      return { success: true, data };
+    }
+  );
+
+  fastify.post(
+    '/aba-autism-cases/seed-mock',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (_request, reply) => {
+      try {
+        const result = await seedMockAutismCases();
+        reply.code(200);
+        return { success: true, data: result };
+      } catch (e: unknown) {
+        reply.code(500);
+        return { success: false, error: formatErrorMessage(e, 'Failed to seed mock autism cases') };
+      }
     }
   );
 

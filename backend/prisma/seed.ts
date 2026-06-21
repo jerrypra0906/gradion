@@ -1,7 +1,13 @@
 import bcrypt from 'bcryptjs';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -10,6 +16,44 @@ const pool = new Pool({
 const prisma = new PrismaClient({
   adapter: new PrismaPg(pool),
 });
+
+type MockCaseRow = {
+  case_number: number;
+  observation_text: string;
+  initial_programs: string[];
+};
+
+async function seedMockAutismCasesInline() {
+  const raw = readFileSync(path.join(__dirname, '../src/data/mockAutismCases.json'), 'utf8');
+  const rows = JSON.parse(raw) as MockCaseRow[];
+  let inserted = 0;
+  let updated = 0;
+  for (const row of rows) {
+    const id = `mock_${row.case_number}`;
+    const existing = await prisma.abaAutismCase.findUnique({ where: { id } });
+    await prisma.abaAutismCase.upsert({
+      where: { id },
+      create: {
+        id,
+        case_number: row.case_number,
+        observation_text: row.observation_text,
+        initial_programs: row.initial_programs,
+        source: 'mock',
+        language: 'id',
+      },
+      update: {
+        case_number: row.case_number,
+        observation_text: row.observation_text,
+        initial_programs: row.initial_programs,
+        source: 'mock',
+        language: 'id',
+      },
+    });
+    if (existing) updated += 1;
+    else inserted += 1;
+  }
+  return { inserted, updated };
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -131,6 +175,13 @@ async function main() {
     },
   });
   console.log('✅ Created sample session');
+
+  try {
+    const mockCases = await seedMockAutismCasesInline();
+    console.log('✅ Seeded mock autism cases:', mockCases);
+  } catch (e) {
+    console.warn('⚠️ Skipped mock autism cases seed (run migrations first):', (e as Error).message);
+  }
 
   // Update child's used_sessions
   await prisma.child.update({

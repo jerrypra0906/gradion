@@ -166,10 +166,14 @@ Hard requirements:
 - Output MUST be a single JSON object (no markdown, no commentary).
 - Keep it realistic for busy parents (short sessions, clear steps).
 - Keep ALL strings short. Prefer short phrases over long paragraphs.
-- Programs should reflect the child's Initial Assessment (priorities + strengths).
-- If prior week's therapy notes are provided, adjust targets, trial counts, and difficulty based on observed accuracy/prompting.
+- Programs should reflect the child's Initial Observation (priorities + strengths) AND Initial Assessment report.
+- Use similar_autism_cases_json as reference exemplars: match program types/domains to observation patterns, but personalize targets for THIS child.
+- If prior week's therapy notes or guided session results are provided, adjust targets, trial counts, and difficulty based on observed accuracy/prompting.
+- If learning_insights_json is provided, follow its recommendations (increase/decrease difficulty, fade prompts, swap programs that underperformed).
+- If clinical_review_comments_json is provided, incorporate therapist/parent review feedback (especially flagged items) into program selection, targets, and parent coaching.
 - Include a boolean field "mainstream_goal_met" ONLY when the assessment + notes strongly indicate the child is ready to transition toward mainstream-style routines with minimal ABA intensity. Otherwise set false.
 - If master_program_library_json is provided and a program clearly matches an existing master, REUSE that master program by copying its id + core fields (do not invent a new id).
+- For the FIRST weekly program (is_first_program=true), prioritize foundational programs similar to the reference cases (reinforcer development, waiting/tolerance, imitation, receptive instructions) before advanced skills.
 
 JSON shape (all keys required unless empty arrays):
 {
@@ -260,18 +264,55 @@ export async function generateWeeklyAbaPlanJson(input: {
   childName: string;
   diagnosis?: string | null;
   assessmentMarkdown: string;
+  initialObservationJson?: unknown | null;
   previousTherapyNotesJson?: unknown | null;
+  previousGuidedResultsJson?: unknown | null;
+  learningInsights?: unknown | null;
+  similarAutismCases?: unknown | null;
   masterPrograms?: unknown | null;
+  isFirstProgram?: boolean;
+  statedGoals?: unknown | null;
+  clinicalReviewComments?: unknown | null;
 }): Promise<{ json: unknown; tokensUsed: number } | null> {
-  const prev =
+  const prevNotes =
     input.previousTherapyNotesJson === null || input.previousTherapyNotesJson === undefined
       ? 'null'
       : JSON.stringify(input.previousTherapyNotesJson);
+
+  const prevGuided =
+    input.previousGuidedResultsJson === null || input.previousGuidedResultsJson === undefined
+      ? 'null'
+      : JSON.stringify(input.previousGuidedResultsJson);
+
+  const learning =
+    input.learningInsights === null || input.learningInsights === undefined
+      ? 'null'
+      : JSON.stringify(input.learningInsights);
+
+  const similarCases =
+    input.similarAutismCases === null || input.similarAutismCases === undefined
+      ? 'null'
+      : JSON.stringify(input.similarAutismCases);
 
   const master =
     input.masterPrograms === null || input.masterPrograms === undefined
       ? 'null'
       : JSON.stringify(input.masterPrograms);
+
+  const observation =
+    input.initialObservationJson === null || input.initialObservationJson === undefined
+      ? 'null'
+      : JSON.stringify(input.initialObservationJson);
+
+  const goals =
+    input.statedGoals === null || input.statedGoals === undefined
+      ? 'null'
+      : JSON.stringify(input.statedGoals);
+
+  const clinicalReviews =
+    input.clinicalReviewComments === null || input.clinicalReviewComments === undefined
+      ? 'null'
+      : JSON.stringify(input.clinicalReviewComments);
 
   const user = `Create the weekly plan.
 
@@ -279,17 +320,36 @@ language: ${input.language}
 week_start: ${input.weekStartYmd}
 child_name: ${input.childName}
 diagnosis: ${input.diagnosis || 'unknown'}
+is_first_program: ${input.isFirstProgram ? 'true' : 'false'}
 
 master_program_library_json:
 ${master}
+
+similar_autism_cases_json (reference exemplars from master case library):
+${similarCases}
+
+initial_observation_json (raw checklist from parent):
+${observation}
 
 initial_assessment_markdown:
 ---
 ${input.assessmentMarkdown}
 ---
 
+stated_goals_json (therapist/parent goals if any):
+${goals}
+
 previous_week_therapy_notes_json:
-${prev}
+${prevNotes}
+
+previous_week_guided_results_json:
+${prevGuided}
+
+learning_insights_json (prior weeks — use recommendations to improve this plan):
+${learning}
+
+clinical_review_comments_json (therapist/parent log & session reviews — address flagged concerns):
+${clinicalReviews}
 `;
 
   // Attempt 1: full plan (but constrained to keep JSON small).

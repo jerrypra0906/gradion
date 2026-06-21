@@ -1,0 +1,202 @@
+[
+  {
+    "case_number": 1,
+    "observation_text": "2y8m, inconsistent response to name, pulls parent's hand, no meaningful words, limited eye contact",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 10 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 2,
+    "observation_text": "3y6m, knows letters/numbers, labels objects, rarely answers questions, prefers playing alone",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 10 seconds (\"Tunggu\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")",
+      "Expressive Label Familiar Objects, Angka & Huruf (\"Ini Apa?)"
+    ]
+  },
+  {
+    "case_number": 3,
+    "observation_text": "4y, tantrums during transitions, difficulty leaving preferred activities, uses some phrases",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 15 seconds (\"Tunggu\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri;\")",
+      "Expressive Label Obyek & Tulisan 1 Kata (\"Ini Apa?)"
+    ]
+  },
+  {
+    "case_number": 4,
+    "observation_text": "5y, sensory seeking, constant jumping/crashing, difficulty sitting",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 5 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 5,
+    "observation_text": "4y, hyperlexia, reads above age level, repeats scripts",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Negatif (\"Ambil yang Bukan xxx\" & \"Jangan Tiru)",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 6,
+    "observation_text": "3y8m, echolalia, repeats questions, limited spontaneous language",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 10 seconds (\"Tunggu\")",
+      "Expressive Label Familiar Objects, Angka & Huruf (\"Ini Apa?)",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 7,
+    "observation_text": "6y, aggression during demands, hits to escape tasks",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 5 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 8,
+    "observation_text": "8y, excellent math, talks excessively about trains, friendship difficulties",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 1 minute (\"Tunggu\")",
+      "Emotions (Receptive & Expressive)",
+      "Intermediate Conversation Skills"
+    ]
+  },
+  {
+    "case_number": 9,
+    "observation_text": "2y10m, spins wheels, limited toy exploration, rare imitation",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 5 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 10,
+    "observation_text": "9y, school refusal, anxiety, rigid routines",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 1 minute (\"Tunggu\")",
+      "Negatif (\"Ambil yang Bukan xxx\" & \"Jangan Tiru)",
+      "Expressive Label Familiar Objects, Angka & Huruf (\"Ini Apa?)"
+    ]
+  },
+  {
+    "case_number": 11,
+    "observation_text": "4y, nonverbal, occasional pointing, frustration when misunderstood",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 5 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 12,
+    "observation_text": "5y, leaves circle time, distracted, prefers one-on-one",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")",
+      "Intermediate Conversation Skills"
+    ]
+  },
+  {
+    "case_number": 13,
+    "observation_text": "3y, lines up objects, distressed by changes",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 14,
+    "observation_text": "4y, excessive screen dependence, tantrums when devices removed",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 15,
+    "observation_text": "7y, complete sentences, interrupts frequently, misses jokes",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 1 minute (\"Tunggu\")",
+      "Emotions (Receptive & Expressive)",
+      "Intermediate Conversation Skills"
+    ]
+  },
+  {
+    "case_number": 16,
+    "observation_text": "6y, difficulty following multi-step directions",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 1 minute (\"Tunggu\")",
+      "Non Verbal Imitation 2 Steps (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 17,
+    "observation_text": "5y, sensory avoidance, covers ears, refuses haircuts",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Non Verbal Imitation (\"Tiru\")",
+      "Receptive Instruction (\"Tepuk Tangan\", \"Ambil\", \"Duduk\", \"Berdiri\")"
+    ]
+  },
+  {
+    "case_number": 18,
+    "observation_text": "10y, advanced vocabulary, socially isolated, misses social cues",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 1 minute (\"Tunggu\")",
+      "Emotions (Receptive & Expressive)",
+      "Intermediate Conversation Skills"
+    ]
+  },
+  {
+    "case_number": 19,
+    "observation_text": "3y, 20-30 words, requests items, rarely comments",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Waiting 30 seconds (\"Tunggu\")",
+      "Emotions (Receptive & Expressive)",
+      "Expressive Label Familiar Objects, Angka & Huruf (\"Ini Apa?)"
+    ]
+  },
+  {
+    "case_number": 20,
+    "observation_text": "11y, executive function challenges, disorganized",
+    "initial_programs": [
+      "Reinforcer Development",
+      "Packing 3-5 Objects",
+      "Emotions (Receptive & Expressive)",
+      "Intermediate Conversation Skills"
+    ]
+  }
+]

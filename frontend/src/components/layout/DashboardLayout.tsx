@@ -244,6 +244,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                             ABA Master Programs
                           </Link>
                           <Link
+                            href="/dashboard/admin/autism-cases"
+                            className="block px-4 py-2 hover:bg-gray-100"
+                            onClick={() => setAdminMenuOpen(false)}
+                          >
+                            Autism Cases (Initial Programs)
+                          </Link>
+                          <Link
                             href="/dashboard/admin/send-email"
                             className="block px-4 py-2 hover:bg-gray-100"
                             onClick={() => setAdminMenuOpen(false)}
@@ -439,6 +446,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Modules CMS
+                  </Link>
+                  <Link
+                    href="/dashboard/admin/master-programs"
+                    className={mobileLinkClass('/dashboard/admin/master-programs')}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    ABA Master Programs
+                  </Link>
+                  <Link
+                    href="/dashboard/admin/autism-cases"
+                    className={mobileLinkClass('/dashboard/admin/autism-cases')}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Autism Cases
                   </Link>
                   <Link
                     href="/dashboard/admin/send-email"

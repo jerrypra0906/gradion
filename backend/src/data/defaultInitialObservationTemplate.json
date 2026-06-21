@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "sections": [
+    {
+      "key": "behavior",
+      "title": {
+        "en": "Behavior (F / S)",
+        "id": "Perilaku (F / S)"
+      },
+      "fields": [
+        {
+          "key": "tantrums",
+          "label": {
+            "en": "Tantrums",
+            "id": "Tantrum"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "self_abuse",
+          "label": {
+            "en": "Self-Abuse",
+            "id": "Melukai diri sendiri"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "aggression",
+          "label": {
+            "en": "Aggression",
+            "id": "Agresi"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "self_stim",
+          "label": {
+            "en": "Self-stim",
+            "id": "Stimulasi diri"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "other_major_1_label",
+          "label": {
+            "en": "Other Major Disruptive Behavior (Specify) 1",
+            "id": "Perilaku mengganggu lain (isi) 1"
+          },
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "other_major_1",
+          "label": {
+            "en": "Other Major Disruptive Behavior 1 (F / S)",
+            "id": "Perilaku mengganggu lain 1 (F / S)"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "other_major_2_label",
+          "label": {
+            "en": "Other Major Disruptive Behavior (Specify) 2",
+            "id": "Perilaku mengganggu lain (isi) 2"
+          },
+          "type": "text",
+          "required": false
+        },
+        {
+          "key": "other_major_2",
+          "label": {
+            "en": "Other Major Disruptive Behavior 2 (F / S)",
+            "id": "Perilaku mengganggu lain 2 (F / S)"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "leaves_work_area",
+          "label": {
+            "en": "Leaves Work Area/chair",
+            "id": "Meninggalkan area kerja/kursi"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        },
+        {
+          "key": "hands_feet_restless",
+          "label": {
+            "en": "Hands and Feet Restless",
+            "id": "Tangan dan kaki gelisah"
+          },
+          "type": "fs_1_to_5",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "attention_eye_contact",
+      "title": {
+        "en": "Attention & Eye Contact",
+        "id": "Perhatian & Kontak Mata"
+      },
+      "fields": [
+        {
+          "key": "attention_span_minutes",
+          "label": {
+            "en": "Attention Span (Average Duration, minutes)",
+            "id": "Rentang perhatian (rata-rata, menit)"
+          },
+          "type": "number_minutes",
+          "required": true
+        },
+        {
+          "key": "eye_contact_on_request_pct",
+          "label": {
+            "en": "Eye-to-Face-Contact: looking on request (%)",
+            "id": "Kontak mata: menatap saat diminta (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "eye_contact_name_called_pct",
+          "label": {
+            "en": "Eye-to-Face-Contact: name is called (%)",
+            "id": "Kontak mata: saat dipanggil namanya (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "eye_contact_talking_listening_pct",
+          "label": {
+            "en": "Eye-to-Face-Contact: talking/listening (%)",
+            "id": "Kontak mata: saat berbicara/mendengarkan (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "looking_at_task_materials_pct",
+          "label": {
+            "en": "Looking at Task Materials (%)",
+            "id": "Melihat bahan/tugas (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "follows_simple_directives_with_gestures_pct",
+          "label": {
+            "en": "Follows Simple Directives with Gestures (%)",
+            "id": "Mengikuti instruksi sederhana dengan isyarat (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "compliance",
+      "title": {
+        "en": "Compliance (%)",
+        "id": "Kepatuhan (%)"
+      },
+      "fields": [
+        {
+          "key": "compliance_come_here_5ft_pct",
+          "label": {
+            "en": "Come here from 5 feet away (%)",
+            "id": "Datang dari jarak 5 kaki (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_come_from_across_room_pct",
+          "label": {
+            "en": "Come from across room (%)",
+            "id": "Datang dari seberang ruangan (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_come_from_other_parts_house_pct",
+          "label": {
+            "en": "Come from other parts of house (%)",
+            "id": "Datang dari bagian lain rumah (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_come_outside_close_confined_pct",
+          "label": {
+            "en": "Come when outside at close distance in confined area (%)",
+            "id": "Datang saat di luar (jarak dekat, area terbatas) (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_come_outside_longer_distance_pct",
+          "label": {
+            "en": "Come outside at longer distance (%)",
+            "id": "Datang saat di luar (jarak lebih jauh) (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_sit_down_pct",
+          "label": {
+            "en": "Sit down (%)",
+            "id": "Duduk (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_stand_up_pct",
+          "label": {
+            "en": "Stand up (%)",
+            "id": "Berdiri (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        },
+        {
+          "key": "compliance_hands_down_pct",
+          "label": {
+            "en": "Hands down (%)",
+            "id": "Tangan turun (%)"
+          },
+          "type": "percent_0_100",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

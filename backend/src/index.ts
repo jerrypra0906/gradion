@@ -28,6 +28,9 @@ import { sitemapRoutes } from './routes/sitemap.js';
 import { videoFidelityRoutes } from './routes/videoFidelity.js';
 import { modulesRoutes } from './routes/modules.js';
 import { abaProgramRoutes } from './routes/abaProgram.js';
+import { seedMockAutismCases } from './services/abaAutismCase.service.js';
+import { ensureDefaultInitialObservationTemplate } from './services/initialObservationTemplate.service.js';
+import { prisma } from './lib/prisma.js';
 import { logStorageConfiguration } from './lib/storage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -232,6 +235,14 @@ async function buildServer() {
 // Start server
 async function start() {
   try {
+    const mockCount = await prisma.abaAutismCase.count({ where: { source: 'mock' } });
+    if (mockCount === 0) {
+      const result = await seedMockAutismCases();
+      logger.info({ result }, 'Seeded mock autism cases on startup');
+    }
+
+    await ensureDefaultInitialObservationTemplate();
+
     const app = await buildServer();
     await app.listen({
       port: config.port,
