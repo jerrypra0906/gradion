@@ -289,9 +289,11 @@ From repo root:
 ```bash
 cd ~/Gradion
 mkdir -p backend/uploads/banners backend/uploads/cms backend/uploads/videos backend/logs
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --build
 docker compose ps
 ```
+
+> **Note:** Use `docker-compose.backend.yml` on the **backend EC2** so the frontend container is not started here. The frontend runs on the separate frontend server (§7). Running `docker compose up -d` without that override starts **all** services including frontend.
 
 > **Note:** First backend build on EC2 can take several minutes. You do **not** need `--no-cache` for normal deploys — use `docker compose build backend` after `git pull`.
 
@@ -718,6 +720,7 @@ Common log lines and fixes:
 |-------------|-----|
 | `Invalid environment variables` / `RESEND_FROM_EMAIL: Invalid email` | Remove `RESEND_FROM_EMAIL=` from `~/Gradion/backend/.env` (omit the line entirely until Resend is configured). Do not set it to an empty string. |
 | SSL / `DB_SSL_REQUIRED` errors | Set `DB_SSL_REQUIRED=false` in root `.env` or `backend/.env` (Docker Postgres does not use SSL). |
+| `initial_observation_templates` does not exist | Schema/migration drift. `git pull` then run `docker compose run --rm --no-deps backend npx prisma migrate deploy` and restart backend. |
 | `EACCES` on `uploads` or `logs` | `sudo mkdir -p backend/uploads/banners backend/uploads/cms backend/uploads/videos backend/logs && sudo chown -R 1000:1000 backend/uploads backend/logs` then `docker compose up -d --build backend`. Latest images also fix permissions on startup via entrypoint. |
 
 **2. Pull latest fixes and rebuild:**

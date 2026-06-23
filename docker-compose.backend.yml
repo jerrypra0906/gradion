@@ -1,0 +1,8 @@
+# Backend EC2: start Postgres + API only (no frontend container).
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --build
+
+services:
+  frontend:
+    profiles:
+      - frontend-on-backend-host
