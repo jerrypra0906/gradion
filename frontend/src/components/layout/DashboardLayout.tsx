@@ -119,12 +119,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {t('reports')}
                   </Link>
                 )}
-                {showClinicalNav && (
+                {showClinicalNav && user.role !== 'parent' && (
                   <Link href="/dashboard/goals" className={desktopLinkClass('/dashboard/goals')}>
                     {t('goals')}
                   </Link>
                 )}
-                {showClinicalNav && (
+                {showClinicalNav && user.role !== 'parent' && (
                   <Link
                     href="/dashboard/video-validation"
                     className={desktopLinkClass('/dashboard/video-validation')}
@@ -132,9 +132,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {t('videoValidation')}
                   </Link>
                 )}
-                <Link href="/dashboard/modules" className={desktopLinkClass('/dashboard/modules')}>
-                  {t('modules')}
-                </Link>
+                {user.role !== 'parent' && (
+                  <Link href="/dashboard/modules" className={desktopLinkClass('/dashboard/modules')}>
+                    {t('modules')}
+                  </Link>
+                )}
                 <Link href="/dashboard/profile" className={desktopLinkClass('/dashboard/profile')}>
                   {t('profile')}
                 </Link>
@@ -343,7 +345,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   {t('reports')}
                 </Link>
               )}
-              {showClinicalNav && (
+              {showClinicalNav && user.role !== 'parent' && (
                 <Link
                   href="/dashboard/goals"
                   className={mobileLinkClass('/dashboard/goals')}
@@ -352,7 +354,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   {t('goals')}
                 </Link>
               )}
-              {showClinicalNav && (
+              {showClinicalNav && user.role !== 'parent' && (
                 <Link
                   href="/dashboard/video-validation"
                   className={mobileLinkClass('/dashboard/video-validation')}
@@ -361,13 +363,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   {t('videoValidation')}
                 </Link>
               )}
-              <Link
-                href="/dashboard/modules"
-                className={mobileLinkClass('/dashboard/modules')}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {t('modules')}
-              </Link>
+              {user.role !== 'parent' && (
+                <Link
+                  href="/dashboard/modules"
+                  className={mobileLinkClass('/dashboard/modules')}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t('modules')}
+                </Link>
+              )}
               <Link
                 href="/dashboard/profile"
                 className={mobileLinkClass('/dashboard/profile')}

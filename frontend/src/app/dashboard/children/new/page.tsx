@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { InitialObservationForm } from '@/components/initialObservation/InitialObservationForm';
@@ -20,17 +20,50 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { useTranslation } from '@/hooks/useTranslation';
 
+// Persisted draft so a parent can leave (or switch language, which reloads the
+// page) and resume the add-child flow where they left off.
+const DRAFT_VERSION = 'v1';
+
+type ChildDraft = {
+  step: 1 | 2;
+  formData: {
+    name: string;
+    birthdate: string;
+    weekly_hours_target: number;
+    environment: string;
+  };
+  observations: ObsFlatFormState[];
+  activeObsIndex: number;
+  savedAt: number;
+};
+
+const emptyFormData = () => ({
+  name: '',
+  birthdate: '',
+  weekly_hours_target: 3,
+  environment: '',
+});
+
+// A draft is only worth saving / offering to resume once the parent has made
+// real progress — otherwise a pristine form would needlessly show the
+// "resumed draft" banner on the next visit.
+const hasDraftContent = (
+  formData: ChildDraft['formData'],
+  step: 1 | 2,
+  observations: ObsFlatFormState[]
+) =>
+  step === 2 ||
+  formData.name.trim() !== '' ||
+  formData.environment.trim() !== '' ||
+  formData.birthdate !== '' ||
+  observations.some((o) => Object.values(o).some((v) => String(v ?? '').trim() !== ''));
+
 export default function NewChildPage() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { t, language } = useTranslation();
   const [step, setStep] = useState<1 | 2>(1);
-  const [formData, setFormData] = useState({
-    name: '',
-    birthdate: '',
-    weekly_hours_target: 3,
-    environment: '',
-  });
+  const [formData, setFormData] = useState(emptyFormData());
   const [template, setTemplate] = useState<IOTemplateJson>(defaultInitialObservationTemplate());
   const [templateLoading, setTemplateLoading] = useState(true);
   const [activeObsIndex, setActiveObsIndex] = useState(0);
@@ -39,6 +72,49 @@ export default function NewChildPage() {
   ]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Draft lifecycle state.
+  const draftKey = user ? `gradion-child-draft-${DRAFT_VERSION}:${user.id}` : null;
+  const [hydrated, setHydrated] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftRestoredRef = useRef(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+
+  // Restore any saved draft before the template loads, so we don't clobber it.
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<ChildDraft>;
+        if (draft && typeof draft === 'object') {
+          const restoredForm = { ...emptyFormData(), ...(draft.formData || {}) };
+          const restoredObs =
+            Array.isArray(draft.observations) && draft.observations.length > 0
+              ? draft.observations
+              : null;
+          const restoredStep = draft.step === 2 ? 2 : 1;
+
+          if (draft.formData) setFormData(restoredForm);
+          if (restoredObs) setObservations(restoredObs);
+          setStep(restoredStep);
+          if (typeof draft.activeObsIndex === 'number') setActiveObsIndex(draft.activeObsIndex);
+          if (typeof draft.savedAt === 'number') setDraftSavedAt(draft.savedAt);
+
+          // Preserve restored observations from the template-load effect, and only
+          // surface the resume banner when the draft actually has content.
+          if (hasDraftContent(restoredForm, restoredStep, restoredObs || [])) {
+            draftRestoredRef.current = true;
+            setDraftRestored(true);
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed draft; fall back to a fresh form.
+    } finally {
+      setHydrated(true);
+    }
+  }, [draftKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +128,10 @@ export default function NewChildPage() {
         if (res.data.success && res.data.data?.template_json) {
           const next = ensureTemplateShape(res.data.data.template_json);
           setTemplate(next);
-          setObservations([createEmptyObsFromTemplate(next)]);
+          // Only seed empty observations when there is no restored draft to preserve.
+          if (!draftRestoredRef.current) {
+            setObservations([createEmptyObsFromTemplate(next)]);
+          }
         }
       } catch {
         // Fall back to built-in default template.
@@ -64,6 +143,65 @@ export default function NewChildPage() {
       cancelled = true;
     };
   }, []);
+
+  // Auto-save the draft on every change once we've hydrated from storage.
+  useEffect(() => {
+    if (!hydrated || !draftKey) return;
+    try {
+      // Don't persist a pristine form — keep storage clean and avoid a spurious
+      // resume banner next time.
+      if (!hasDraftContent(formData, step, observations)) {
+        localStorage.removeItem(draftKey);
+        setDraftSavedAt(null);
+        return;
+      }
+      const savedAt = Date.now();
+      const draft: ChildDraft = { step, formData, observations, activeObsIndex, savedAt };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+      setDraftSavedAt(savedAt);
+    } catch {
+      // Ignore storage quota / serialization errors.
+    }
+  }, [hydrated, draftKey, step, formData, observations, activeObsIndex]);
+
+  const clearDraft = () => {
+    if (!draftKey) return;
+    try {
+      localStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveDraftAndExit = () => {
+    if (draftKey) {
+      try {
+        const draft: ChildDraft = {
+          step,
+          formData,
+          observations,
+          activeObsIndex,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        // ignore
+      }
+    }
+    router.push('/dashboard/children');
+  };
+
+  const handleDiscardDraft = () => {
+    clearDraft();
+    draftRestoredRef.current = false;
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+    setStep(1);
+    setFormData(emptyFormData());
+    setObservations([createEmptyObsFromTemplate(template)]);
+    setActiveObsIndex(0);
+    setError('');
+  };
 
   const isAllObsComplete = useMemo(
     () => observations.every((obs) => isObsCompleteForTemplate(template, obs)),
@@ -101,6 +239,7 @@ export default function NewChildPage() {
         initial_observation,
       });
       if (response.data.success && response.data.data?.id) {
+        clearDraft();
         router.push(`/dashboard/children/${response.data.data.id}`);
       } else {
         setError(response.data.error || 'Failed to create child');
@@ -126,6 +265,23 @@ export default function NewChildPage() {
             {step === 1 ? t('childCreateStep1Subtitle') : t('childCreateStep2Subtitle')}
           </p>
         </div>
+
+        {draftRestored && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span>
+              {language === 'id'
+                ? 'Draf tersimpan dipulihkan. Anda dapat melanjutkan dari tempat terakhir.'
+                : 'Resumed your saved draft. You can continue where you left off.'}
+            </span>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="ml-4 shrink-0 font-medium underline hover:no-underline"
+            >
+              {language === 'id' ? 'Mulai dari awal' : 'Start over'}
+            </button>
+          </div>
+        )}
 
         <div className="bg-white shadow sm:rounded-lg">
           <form onSubmit={step === 1 ? handleNext : handleCreate} className="p-6 space-y-6">
@@ -245,21 +401,35 @@ export default function NewChildPage() {
               </>
             )}
 
-            <div className="flex justify-end space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (step === 1) router.back();
-                  else setStep(1);
-                }}
-                disabled={loading}
-              >
-                {step === 1 ? t('cancel') : t('back')}
-              </Button>
-              <Button type="submit" disabled={loading || (step === 2 && (!isAllObsComplete || templateLoading))}>
-                {step === 1 ? t('next') : loading ? t('creating') : t('createChild')}
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                {draftSavedAt
+                  ? language === 'id'
+                    ? `Draf disimpan otomatis ${new Date(draftSavedAt).toLocaleTimeString()}`
+                    : `Draft auto-saved at ${new Date(draftSavedAt).toLocaleTimeString()}`
+                  : language === 'id'
+                    ? 'Perubahan disimpan otomatis sebagai draf.'
+                    : 'Changes are auto-saved as a draft.'}
+              </p>
+              <div className="flex justify-end space-x-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (step === 1) router.back();
+                    else setStep(1);
+                  }}
+                  disabled={loading}
+                >
+                  {step === 1 ? t('cancel') : t('back')}
+                </Button>
+                <Button type="button" variant="outline" onClick={handleSaveDraftAndExit} disabled={loading}>
+                  {language === 'id' ? 'Simpan draf & keluar' : 'Save draft & exit'}
+                </Button>
+                <Button type="submit" disabled={loading || (step === 2 && (!isAllObsComplete || templateLoading))}>
+                  {step === 1 ? t('next') : loading ? t('creating') : t('createChild')}
+                </Button>
+              </div>
             </div>
           </form>
         </div>
