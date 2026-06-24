@@ -819,5 +819,224 @@ export async function adminRoutes(
       }
     }
   );
+
+  // -----------------------------
+  // AI Content Review (admin only)
+  // Assessment reports + weekly ABA programs require admin approval before
+  // parents can see them. Admins can list, view, edit, approve/reject, delete.
+  // -----------------------------
+  const reviewStatusEnum = z.enum(['pending', 'approved', 'rejected']);
+  const reviewFilterEnum = z.enum(['pending', 'approved', 'rejected', 'all']);
+
+  fastify.get(
+    '/ai-content',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request) => {
+      const q = (request.query || {}) as { status?: string };
+      const status = reviewFilterEnum.catch('pending').parse(q.status);
+      const statusWhere = status === 'all' ? {} : { assessment_review_status: status };
+      const weekStatusWhere = status === 'all' ? {} : { review_status: status };
+
+      const [assessmentChildren, weeks] = await Promise.all([
+        prisma.child.findMany({
+          where: {
+            OR: [
+              { initial_assessment_report: { not: null } },
+              { initial_assessment_report_id: { not: null } },
+            ],
+            ...statusWhere,
+          },
+          orderBy: { id: 'desc' },
+          take: 200,
+          include: { parent: { select: { id: true, name: true, email: true } } },
+        }),
+        prisma.childAbaProgramWeek.findMany({
+          where: weekStatusWhere,
+          orderBy: { id: 'desc' },
+          take: 200,
+          include: { child: { select: { id: true, name: true, parent_id: true } } },
+        }),
+      ]);
+
+      const assessments = assessmentChildren.map((c) => ({
+        child_id: c.id,
+        child_name: c.name,
+        parent_name: c.parent?.name ?? null,
+        review_status: c.assessment_review_status,
+        reviewed_at: c.assessment_reviewed_at,
+        report_en: c.initial_assessment_report,
+        report_id: c.initial_assessment_report_id,
+        created_at: c.created_at,
+      }));
+
+      const weekItems = weeks.map((w) => ({
+        week_id: w.id,
+        child_id: w.child_id,
+        child_name: w.child?.name ?? null,
+        week_start: w.week_start,
+        lifecycle_status: w.status,
+        review_status: w.review_status,
+        reviewed_at: w.reviewed_at,
+        plan_json: w.plan_json,
+        updated_at: w.updated_at,
+      }));
+
+      return { success: true, data: { assessments, weeks: weekItems } };
+    }
+  );
+
+  // Approve / reject an assessment report
+  fastify.post(
+    '/ai-content/assessment/:childId/review',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const user = (request as any).user!;
+      const childId = parseInt((request.params as any).childId, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child id' };
+      }
+      const { decision } = z
+        .object({ decision: reviewStatusEnum })
+        .parse(request.body);
+
+      const updated = await prisma.child.update({
+        where: { id: childId },
+        data: {
+          assessment_review_status: decision,
+          assessment_reviewed_at: new Date(),
+          assessment_reviewed_by: user.id,
+        },
+      });
+      return { success: true, data: { child_id: updated.id, review_status: updated.assessment_review_status } };
+    }
+  );
+
+  // Edit an assessment report's content (markdown)
+  fastify.put(
+    '/ai-content/assessment/:childId',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const childId = parseInt((request.params as any).childId, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child id' };
+      }
+      const body = z
+        .object({
+          report_en: z.string().nullable().optional(),
+          report_id: z.string().nullable().optional(),
+        })
+        .parse(request.body);
+
+      const updated = await prisma.child.update({
+        where: { id: childId },
+        data: {
+          ...(body.report_en !== undefined ? { initial_assessment_report: body.report_en } : {}),
+          ...(body.report_id !== undefined ? { initial_assessment_report_id: body.report_id } : {}),
+        },
+      });
+      return {
+        success: true,
+        data: {
+          child_id: updated.id,
+          report_en: updated.initial_assessment_report,
+          report_id: updated.initial_assessment_report_id,
+        },
+      };
+    }
+  );
+
+  // Delete (clear) an assessment report
+  fastify.delete(
+    '/ai-content/assessment/:childId',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const childId = parseInt((request.params as any).childId, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child id' };
+      }
+      await prisma.child.update({
+        where: { id: childId },
+        data: {
+          initial_assessment_report: null,
+          initial_assessment_report_id: null,
+          assessment_review_status: 'pending',
+          assessment_reviewed_at: null,
+          assessment_reviewed_by: null,
+        },
+      });
+      return { success: true, data: { child_id: childId } };
+    }
+  );
+
+  // Approve / reject a weekly ABA program
+  fastify.post(
+    '/ai-content/week/:weekId/review',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const user = (request as any).user!;
+      const weekId = parseInt((request.params as any).weekId, 10);
+      if (Number.isNaN(weekId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid week id' };
+      }
+      const { decision } = z
+        .object({ decision: reviewStatusEnum })
+        .parse(request.body);
+
+      const updated = await prisma.childAbaProgramWeek.update({
+        where: { id: weekId },
+        data: {
+          review_status: decision,
+          reviewed_at: new Date(),
+          reviewed_by: user.id,
+        },
+      });
+      return { success: true, data: { week_id: updated.id, review_status: updated.review_status } };
+    }
+  );
+
+  // Edit a weekly ABA program's plan JSON
+  fastify.put(
+    '/ai-content/week/:weekId',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const weekId = parseInt((request.params as any).weekId, 10);
+      if (Number.isNaN(weekId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid week id' };
+      }
+      const body = z
+        .object({ plan_json: z.any() })
+        .parse(request.body);
+      if (body.plan_json === null || typeof body.plan_json !== 'object') {
+        reply.code(400);
+        return { success: false, error: 'plan_json must be a JSON object' };
+      }
+
+      const updated = await prisma.childAbaProgramWeek.update({
+        where: { id: weekId },
+        data: { plan_json: body.plan_json as any },
+      });
+      return { success: true, data: { week_id: updated.id, plan_json: updated.plan_json } };
+    }
+  );
+
+  // Delete a weekly ABA program
+  fastify.delete(
+    '/ai-content/week/:weekId',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const weekId = parseInt((request.params as any).weekId, 10);
+      if (Number.isNaN(weekId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid week id' };
+      }
+      await prisma.childAbaProgramWeek.delete({ where: { id: weekId } });
+      return { success: true, data: { week_id: weekId } };
+    }
+  );
 }
 

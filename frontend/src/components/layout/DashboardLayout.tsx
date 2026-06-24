@@ -253,6 +253,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                             Autism Cases (Initial Programs)
                           </Link>
                           <Link
+                            href="/dashboard/admin/ai-content-review"
+                            className="block px-4 py-2 hover:bg-gray-100"
+                            onClick={() => setAdminMenuOpen(false)}
+                          >
+                            AI Content Review
+                          </Link>
+                          <Link
                             href="/dashboard/admin/send-email"
                             className="block px-4 py-2 hover:bg-gray-100"
                             onClick={() => setAdminMenuOpen(false)}
@@ -464,6 +471,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     Autism Cases
+                  </Link>
+                  <Link
+                    href="/dashboard/admin/ai-content-review"
+                    className={mobileLinkClass('/dashboard/admin/ai-content-review')}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    AI Content Review
                   </Link>
                   <Link
                     href="/dashboard/admin/send-email"

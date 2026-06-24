@@ -70,7 +70,9 @@ function FsField({
           const val = side === 'f' ? fVal : sVal;
           return (
             <div key={side}>
-              <label className="block text-xs text-gray-600 mb-1">{side.toUpperCase()}</label>
+              <label className="block text-xs text-gray-600 mb-1">
+                {side === 'f' ? (language === 'id' ? 'Frekuensi' : 'Frequency') : 'Severity'}
+              </label>
               <input
                 type="range"
                 min={1}

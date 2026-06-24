@@ -210,10 +210,23 @@ export async function childrenRoutes(
           email: m.therapist.email,
         })) ?? [];
 
+      // Parents only see the AI Initial Assessment once an admin approves it.
+      const hasReport = Boolean(child.initial_assessment_report || child.initial_assessment_report_id);
+      const parentPending = user.role === 'parent' && child.assessment_review_status !== 'approved';
+      const gatedChild = parentPending
+        ? {
+            ...child,
+            initial_assessment_report: null,
+            initial_assessment_report_id: null,
+            // Tells the parent UI a report exists but is awaiting admin review.
+            has_pending_assessment: hasReport,
+          }
+        : { ...child, has_pending_assessment: false };
+
       return {
         success: true,
         data: {
-          ...child,
+          ...gatedChild,
           therapists,
         },
       };
@@ -314,16 +327,31 @@ export async function childrenRoutes(
           ...(lang === 'id'
             ? { initial_assessment_report_id: result.reportMarkdown }
             : { initial_assessment_report: result.reportMarkdown }),
+          // Re-generating/translating resets the report to "pending" admin review.
+          assessment_review_status: 'pending',
+          assessment_reviewed_at: null,
+          assessment_reviewed_by: null,
         },
         include: {
           parent: { select: { id: true, name: true, email: true } },
         },
       });
 
+      // Hide the freshly generated content from the parent until an admin approves it.
+      const gatedUpdated =
+        user.role === 'parent'
+          ? {
+              ...updated,
+              initial_assessment_report: null,
+              initial_assessment_report_id: null,
+              has_pending_assessment: true,
+            }
+          : updated;
+
       return {
         success: true,
         data: {
-          child: updated,
+          child: gatedUpdated,
           tokensUsed: result.tokensUsed,
         },
       };

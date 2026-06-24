@@ -648,6 +648,9 @@ export default function ChildDetailPage() {
   const assessmentForLanguage =
     language === 'id' ? child.initial_assessment_report_id : child.initial_assessment_report;
   const englishAssessment = child.initial_assessment_report;
+  // Parents only see AI content after an admin approves it.
+  const isParentViewer = user.role === 'parent';
+  const assessmentPending = isParentViewer && Boolean(child.has_pending_assessment);
 
   // (moved above) current week memo + ABA auto-translate effect
 
@@ -731,7 +734,7 @@ export default function ChildDetailPage() {
                   </div>
                   {/* No manual regenerate: auto-translate when switching to ID.
                       Keep a manual generate only when no report exists at all. */}
-                  {!assessmentForLanguage && (
+                  {!assessmentForLanguage && !assessmentPending && (
                     <div className="flex items-center gap-2">
                       {language === 'id' && englishAssessment ? (
                         <div className="text-xs font-medium text-gray-700">
@@ -753,6 +756,14 @@ export default function ChildDetailPage() {
                 {assessmentError && (
                   <div className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {assessmentError}
+                  </div>
+                )}
+
+                {assessmentPending && (
+                  <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {language === 'id'
+                      ? 'Laporan AI sedang menunggu peninjauan admin. Laporan akan terlihat setelah disetujui.'
+                      : 'This AI report is awaiting admin review. It will appear once approved.'}
                   </div>
                 )}
 
@@ -815,7 +826,15 @@ export default function ChildDetailPage() {
               <p className="text-sm text-gray-600">{t('abaProgramNoWeekYet')}</p>
             )}
 
-            {currentWeekRow && (
+            {currentWeekRow && isParentViewer && currentWeekRow.review_status !== 'approved' && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                {language === 'id'
+                  ? 'Program mingguan ini sedang menunggu peninjauan admin. Program akan terlihat setelah disetujui.'
+                  : 'This weekly program is awaiting admin review. It will appear once approved.'}
+              </div>
+            )}
+
+            {currentWeekRow && !(isParentViewer && currentWeekRow.review_status !== 'approved') && (
               <div className="rounded-lg border border-gray-200 p-4 space-y-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>

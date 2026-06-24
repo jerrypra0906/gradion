@@ -118,7 +118,17 @@ export async function abaProgramRoutes(
           },
         });
 
-        return { success: true, data: { weeks } };
+        // Parents only see a week's plan once an admin approves it.
+        const gatedWeeks =
+          user.role === 'parent'
+            ? weeks.map((w) =>
+                w.review_status === 'approved'
+                  ? w
+                  : { ...w, plan_json: null, therapy_notes_json: null }
+              )
+            : weeks;
+
+        return { success: true, data: { weeks: gatedWeeks } };
       } catch (error: unknown) {
         logger.error({ err: error }, 'Failed to list ABA program weeks');
         reply.code(500);
@@ -281,15 +291,24 @@ export async function abaProgramRoutes(
             status: 'active',
             plan_json: plan as any,
             mainstream_goal_met: mainstream,
+            review_status: 'pending',
           },
           update: {
             status: 'active',
             plan_json: plan as any,
             mainstream_goal_met: mainstream,
+            // Re-generating resets the week to "pending" admin review.
+            review_status: 'pending',
+            reviewed_at: null,
+            reviewed_by: null,
           },
         });
 
-        return { success: true, data: { week, tokens_used: ai.tokensUsed } };
+        // Hide the freshly generated plan from the parent until an admin approves it.
+        const gatedWeek =
+          user.role === 'parent' ? { ...week, plan_json: null, therapy_notes_json: null } : week;
+
+        return { success: true, data: { week: gatedWeek, tokens_used: ai.tokensUsed } };
       } catch (error: unknown) {
         logger.error({ err: error }, 'Failed to generate ABA week');
         reply.code(500);

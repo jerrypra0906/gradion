@@ -77,6 +77,10 @@ model Child {
   initial_observation Json?
   initial_assessment_report String? @db.Text
   initial_assessment_report_id String? @db.Text
+  // AI assessment report admin-review gate (hidden from parents until approved).
+  assessment_review_status AiReviewStatus @default(pending)
+  assessment_reviewed_at   DateTime?
+  assessment_reviewed_by   Int?
 
   parent               User                  @relation("ParentChildren", fields: [parent_id], references: [id], onDelete: Cascade)
   therapistMap         TherapistChild[]
@@ -97,6 +101,14 @@ enum AbaProgramWeekStatus {
   draft
   active
   completed
+}
+
+// Admin review state for AI-generated content (assessment reports + weekly ABA
+// programs). Parents only see content once an admin has approved it.
+enum AiReviewStatus {
+  pending
+  approved
+  rejected
 }
 
 enum AbaProgramSessionMode {
@@ -142,6 +154,10 @@ model ChildAbaProgramWeek {
   /// Optional: therapist-style rows parsed from an uploaded therapy-notes photo (OCR).
   therapy_notes_json Json?
   mainstream_goal_met Boolean      @default(false)
+  // AI weekly-program admin-review gate (hidden from parents until approved).
+  review_status AiReviewStatus     @default(pending)
+  reviewed_at   DateTime?
+  reviewed_by   Int?
   created_at DateTime              @default(now())
   updated_at DateTime              @updatedAt
 

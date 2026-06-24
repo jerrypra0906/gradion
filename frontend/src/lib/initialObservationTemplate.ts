@@ -33,6 +33,14 @@ const BEHAVIOR_FS_KEYS = new Set([
   'hands_feet_restless',
 ]);
 
+// "Other major disruptive behavior" F/S sliders only matter once the parent has
+// actually named the behavior in the paired "(Specify)" text field. Map each
+// conditional F/S key to the text key that gates whether it is required.
+const CONDITIONAL_FS_LABEL_KEYS: Record<string, string> = {
+  other_major_1: 'other_major_1_label',
+  other_major_2: 'other_major_2_label',
+};
+
 export function defaultInitialObservationTemplate(): IOTemplateJson {
   return {
     version: 1,
@@ -173,8 +181,20 @@ export function flatKeysForTemplate(template: IOTemplateJson): string[] {
 
 export function createEmptyObsFromTemplate(template: IOTemplateJson): ObsFlatFormState {
   const state: ObsFlatFormState = {};
-  for (const key of flatKeysForTemplate(template)) {
-    state[key] = '';
+  for (const section of template.sections) {
+    for (const field of section.fields) {
+      if (field.type === 'fs_1_to_5') {
+        // Mandatory behaviors start at 1 instead of blank so the parent isn't
+        // forced to nudge every slider. The optional "Other major" behaviors
+        // stay blank until they are named, so they don't pre-fill noise.
+        const startsFilled = Boolean(field.required) && !CONDITIONAL_FS_LABEL_KEYS[field.key];
+        const def = startsFilled ? '1' : '';
+        state[`${field.key}_f`] = def;
+        state[`${field.key}_s`] = def;
+      } else {
+        state[field.key] = '';
+      }
+    }
   }
   return state;
 }
@@ -184,6 +204,10 @@ export function isObsCompleteForTemplate(template: IOTemplateJson, obs: ObsFlatF
     for (const field of section.fields) {
       if (!field.required) continue;
       if (field.type === 'fs_1_to_5') {
+        // The conditional "Other major" F/S is only required once its paired
+        // "(Specify)" text field has been filled in.
+        const labelKey = CONDITIONAL_FS_LABEL_KEYS[field.key];
+        if (labelKey && String(obs[labelKey] ?? '').trim() === '') continue;
         if (String(obs[`${field.key}_f`] ?? '').trim() === '') return false;
         if (String(obs[`${field.key}_s`] ?? '').trim() === '') return false;
       } else if (String(obs[field.key] ?? '').trim() === '') {

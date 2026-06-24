@@ -342,10 +342,10 @@ export default function NewChildPage() {
                   <div className="font-medium text-gray-900 mb-1">{t('howToFillChecklistTitle')}</div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>
-                      <strong>F (Frequency)</strong>: {t('checklistHowToFrequency')}
+                      <strong>Frekuensi</strong>: {t('checklistHowToFrequency')}
                     </li>
                     <li>
-                      <strong>S (Severity)</strong>: {t('checklistHowToSeverity')}
+                      <strong>Severity</strong>: {t('checklistHowToSeverity')}
                     </li>
                     <li>
                       <strong>%</strong>: {t('checklistHowToPercent')}

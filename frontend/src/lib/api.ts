@@ -128,6 +128,8 @@ export interface Child {
   initial_observation?: any | null;
   initial_assessment_report?: string | null;
   initial_assessment_report_id?: string | null;
+  assessment_review_status?: AiReviewStatus;
+  has_pending_assessment?: boolean;
   parent?: {
     id: number;
     name: string;
@@ -143,12 +145,14 @@ export interface Child {
 export type AbaProgramWeekStatus = 'draft' | 'active' | 'completed';
 export type AbaProgramSessionMode = 'guided' | 'upload';
 export type AbaProgramSessionStatus = 'in_progress' | 'completed' | 'cancelled';
+export type AiReviewStatus = 'pending' | 'approved' | 'rejected';
 
 export interface AbaProgramWeek {
   id: number;
   child_id: number;
   week_start: string;
   status: AbaProgramWeekStatus;
+  review_status?: AiReviewStatus;
   plan_json: unknown;
   therapy_notes_json?: unknown | null;
   mainstream_goal_met: boolean;
