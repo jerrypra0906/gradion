@@ -5,6 +5,8 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { AssessmentReportView } from '@/components/aba/AssessmentReportView';
 import { WeeklyProgramView } from '@/components/aba/WeeklyProgramView';
+import { WeeklyProgramEditor } from '@/components/aba/WeeklyProgramEditor';
+import { MarkdownRichEditor } from '@/components/aba/MarkdownRichEditor';
 import { apiClient, ApiResponse, AiReviewStatus } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 
@@ -65,7 +67,7 @@ export default function AiContentReviewPage() {
   const [editAssessmentId, setEditAssessmentId] = useState<number | null>(null);
   const [assessmentDraft, setAssessmentDraft] = useState<{ en: string; id: string }>({ en: '', id: '' });
   const [editWeekId, setEditWeekId] = useState<number | null>(null);
-  const [weekDraft, setWeekDraft] = useState<string>('');
+  const [weekPlanDraft, setWeekPlanDraft] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -147,20 +149,32 @@ export default function AiContentReviewPage() {
   };
 
   const saveWeek = async (weekId: number) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(weekDraft);
-    } catch {
-      setError('Plan JSON is not valid JSON.');
+    if (!weekPlanDraft || typeof weekPlanDraft !== 'object') {
+      setError('Nothing to save.');
       return;
     }
+    // Trim and drop blank target/material rows so empty entries aren't persisted.
+    const cleaned = {
+      ...weekPlanDraft,
+      programs: Array.isArray(weekPlanDraft.programs)
+        ? weekPlanDraft.programs.map((pr: any) => ({
+            ...pr,
+            targets: Array.isArray(pr.targets)
+              ? pr.targets.map((t: any) => String(t).trim()).filter(Boolean)
+              : pr.targets,
+            materials: Array.isArray(pr.materials)
+              ? pr.materials.map((m: any) => String(m).trim()).filter(Boolean)
+              : pr.materials,
+          }))
+        : weekPlanDraft.programs,
+    };
     try {
-      await apiClient.put(`/admin/ai-content/week/${weekId}`, { plan_json: parsed });
-      flash('Weekly plan saved.');
+      await apiClient.put(`/admin/ai-content/week/${weekId}`, { plan_json: cleaned });
+      flash('Weekly program saved.');
       setEditWeekId(null);
       await load();
     } catch {
-      setError('Failed to save weekly plan.');
+      setError('Failed to save weekly program.');
     }
   };
 
@@ -327,27 +341,25 @@ export default function AiContentReviewPage() {
                         </Button>
 
                         {editing && (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">
-                                Report (Bahasa Indonesia) — Markdown
+                                Report (Bahasa Indonesia)
                               </label>
-                              <textarea
+                              <MarkdownRichEditor
                                 value={assessmentDraft.id}
-                                onChange={(e) => setAssessmentDraft((prev) => ({ ...prev, id: e.target.value }))}
-                                rows={10}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs"
+                                onChange={(v) => setAssessmentDraft((prev) => ({ ...prev, id: v }))}
+                                language="id"
                               />
                             </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">
-                                Report (English) — Markdown
+                                Report (English)
                               </label>
-                              <textarea
+                              <MarkdownRichEditor
                                 value={assessmentDraft.en}
-                                onChange={(e) => setAssessmentDraft((prev) => ({ ...prev, en: e.target.value }))}
-                                rows={10}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs"
+                                onChange={(v) => setAssessmentDraft((prev) => ({ ...prev, en: v }))}
+                                language="en"
                               />
                             </div>
                             <Button type="button" size="sm" onClick={() => saveAssessment(a.child_id)}>
@@ -439,26 +451,22 @@ export default function AiContentReviewPage() {
                               setEditWeekId(null);
                             } else {
                               setEditWeekId(w.week_id);
-                              setWeekDraft(JSON.stringify(w.plan_json ?? {}, null, 2));
+                              setWeekPlanDraft(JSON.parse(JSON.stringify(w.plan_json ?? {})));
                             }
                           }}
                         >
-                          {editing ? 'Hide JSON editor' : 'Edit / add (JSON)'}
+                          {editing ? 'Hide editor' : 'Edit / add programs'}
                         </Button>
 
                         {editing && (
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-gray-600">
-                              Plan JSON (edit to add / change / remove programs)
-                            </label>
-                            <textarea
-                              value={weekDraft}
-                              onChange={(e) => setWeekDraft(e.target.value)}
-                              rows={18}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-xs"
+                          <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+                            <WeeklyProgramEditor
+                              plan={weekPlanDraft}
+                              language={planLanguage(weekPlanDraft)}
+                              onChange={setWeekPlanDraft}
                             />
                             <Button type="button" size="sm" onClick={() => saveWeek(w.week_id)}>
-                              Save plan
+                              Save program
                             </Button>
                           </div>
                         )}

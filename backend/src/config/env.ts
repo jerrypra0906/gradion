@@ -69,6 +69,22 @@ const envSchema = z.object({
   SUPPORT_EMAIL: optionalEmail,
   EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS: z.coerce.number().default(24),
   EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES: z.coerce.number().default(10),
+  // SMTP (e.g. Gmail / Google Workspace). When SMTP_HOST + SMTP_USER +
+  // SMTP_PASSWORD are set, email is sent via SMTP instead of Resend.
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().default(587),
+  // NOTE: z.coerce.boolean() treats any non-empty string (incl. "false") as
+  // true, so parse the string explicitly. true → implicit TLS (465),
+  // false → STARTTLS (587).
+  SMTP_SECURE: z
+    .preprocess(
+      (v) => (typeof v === 'string' ? ['true', '1', 'yes'].includes(v.trim().toLowerCase()) : v),
+      z.boolean()
+    )
+    .default(false),
+  SMTP_USER: optionalString,
+  SMTP_PASSWORD: optionalString,
+  SMTP_FROM_EMAIL: optionalEmail,
 
   // Payment - Midtrans
   MIDTRANS_SERVER_KEY: optionalString,
@@ -182,6 +198,12 @@ export const config = {
     supportEmail: parsedEnv.data.SUPPORT_EMAIL,
     verificationExpiresHours: parsedEnv.data.EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS,
     resendCooldownMinutes: parsedEnv.data.EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES,
+    smtpHost: parsedEnv.data.SMTP_HOST,
+    smtpPort: parsedEnv.data.SMTP_PORT,
+    smtpSecure: parsedEnv.data.SMTP_SECURE,
+    smtpUser: parsedEnv.data.SMTP_USER,
+    smtpPassword: parsedEnv.data.SMTP_PASSWORD,
+    smtpFromEmail: parsedEnv.data.SMTP_FROM_EMAIL,
   },
   payment: {
     midtransServerKey: parsedEnv.data.MIDTRANS_SERVER_KEY,

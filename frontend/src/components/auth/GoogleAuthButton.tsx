@@ -23,7 +23,7 @@ export function GoogleAuthButton({
   const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
   const clientId =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-    '240575427402-su5e6dfpmpv3oqmu1d5au323a8vtskvg.apps.googleusercontent.com';
+    '716619312677-upn6u3mi723ridd90qugdhhubc026jod.apps.googleusercontent.com';
 
   if (!clientId) {
     return null;

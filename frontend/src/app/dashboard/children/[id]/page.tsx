@@ -416,6 +416,13 @@ export default function ChildDetailPage() {
       );
       if (response.data.success && response.data.data?.child) {
         setChild(response.data.data.child);
+        // First time: when the assessment is generated and the child has no
+        // weekly ABA program yet, also generate this week's program so the
+        // family gets both at once. Best-effort — failures surface in the ABA
+        // section and don't undo the assessment.
+        if (mode === 'generate' && abaWeeks.length === 0) {
+          await handleGenerateAbaWeek(currentWeekStart);
+        }
       } else {
         setAssessmentError(response.data.error || 'Failed to generate assessment');
       }

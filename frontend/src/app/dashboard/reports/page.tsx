@@ -202,23 +202,15 @@ export default function ReportsPage() {
   };
 
   const canSeeAISummary = useMemo(() => {
+    // Parents do not see the AI Summary & Recommendations section on Reports.
+    if (user?.role === 'parent') {
+      return false;
+    }
     if (isClinicalOrAdmin(user?.role)) {
       return true;
     }
-    if (user?.role === 'parent') {
-      if (!subscription) return false;
-      if (subscription.status === 'trial') return true;
-      if (subscription.status === 'active' && planConfig?.aiAccess) {
-        if (subscription.end_date) {
-          const endDate = new Date(subscription.end_date);
-          const now = new Date();
-          return endDate >= now;
-        }
-        return true;
-      }
-    }
     return false;
-  }, [user?.role, subscription, planConfig]);
+  }, [user?.role]);
 
 
   const ratingLabel = useMemo(() => {

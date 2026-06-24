@@ -178,13 +178,23 @@ export async function authRoutes(
         },
       };
     } catch (error: any) {
+      // Surface known, non-sensitive cases with a clear message even in
+      // production (formatErrorMessage otherwise masks everything as generic).
       if (error.message === 'User with this email already exists') {
         reply.code(409);
-      } else if (error.message?.includes('Too many registration attempts')) {
-        reply.code(429);
-      } else {
-        reply.code(400);
+        return {
+          success: false,
+          error: 'An account with this email already exists. Please sign in instead.',
+        };
       }
+      if (error.message?.includes('Too many registration attempts')) {
+        reply.code(429);
+        return {
+          success: false,
+          error: 'Too many registration attempts. Please wait a while and try again.',
+        };
+      }
+      reply.code(400);
       return {
         success: false,
         error: formatErrorMessage(error, 'Registration failed'),

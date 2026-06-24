@@ -365,8 +365,9 @@ export async function generateInitialAssessmentFromObservation(input: {
     .replace('{{SUMMARY}}', summaryLines.join('\n'))
     .replace('{{RAW_JSON}}', JSON.stringify(input.initialObservation, null, 2));
 
-  // Prefer faster providers when configured; keep output short for speed.
-  const maxOut = 650;
+  // Allow enough tokens for the full multi-section report; 650 truncated it
+  // mid-sentence. ~1800 comfortably fits the complete assessment.
+  const maxOut = 1800;
   const temp = 0.35;
 
   const out =
