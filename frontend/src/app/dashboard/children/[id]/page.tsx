@@ -557,25 +557,24 @@ export default function ChildDetailPage() {
             <h3 className="text-sm font-semibold text-gray-900">{t('checklistBehaviorObs1')}</h3>
             <p className="text-xs text-gray-600">{t('checklistFsHint')}</p>
           </div>
-          <div className="p-4 overflow-x-auto">
-            <table className="min-w-[520px] w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-600">
-                  <th className="py-2 pr-4">{t('checklistBehaviorCol')}</th>
-                  <th className="py-2 pr-4 w-20">{t('checklistFrequencyCol')}</th>
-                  <th className="py-2 pr-4 w-20">{t('checklistSeverityCol')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {rows.map((r) => (
-                  <tr key={r.label}>
-                    <td className="py-2 pr-4 text-gray-900">{r.label}</td>
-                    <td className="py-2 pr-4">{fsCell(r.f)}</td>
-                    <td className="py-2 pr-4">{fsCell(r.s)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Responsive cards: 1 per row on mobile (Frekuensi & Severity side-by-side,
+              no horizontal scroll), 2 per row on larger screens. */}
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {rows.map((r) => (
+              <div key={r.label} className="rounded-lg border border-gray-200 p-3">
+                <div className="text-sm font-medium text-gray-900 mb-2">{r.label}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">{t('checklistFrequencyCol')}</div>
+                    {fsCell(r.f)}
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">{t('checklistSeverityCol')}</div>
+                    {fsCell(r.s)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 

@@ -5,13 +5,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* App is light-themed only. Lock the color scheme so OS/browser dark mode
+     does not invert body background/text (no dark variants are implemented,
+     which would otherwise break contrast in any browser). */
+  color-scheme: light;
 }
 
 body {
@@ -47,6 +44,51 @@ textarea::placeholder {
   color: #9ca3af;
   -webkit-text-fill-color: #9ca3af;
   opacity: 1;
+}
+
+/* Cross-browser range sliders (Initial Observation F/S, child view).
+   The colored gradient track is applied inline per-slider; these rules reset
+   native control chrome (with vendor prefixes that autoprefixer can't add to
+   inline styles) and give a consistent thumb in Chrome/Edge, Safari, and
+   Firefox so the sliders look the same outside Chrome. */
+input[type="range"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: #e5e7eb; /* fallback track if no inline gradient */
+  cursor: pointer;
+}
+input[type="range"]:disabled {
+  cursor: default;
+  opacity: 1;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  margin-top: -4px; /* center the 16px thumb on the 8px track */
+  border-radius: 9999px;
+  background: #ffffff;
+  border: 2px solid #2563eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+input[type="range"]::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border: 2px solid #2563eb;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+/* Let the inline gradient (set on the element background) show as the track in Firefox */
+input[type="range"]::-moz-range-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: transparent;
 }
 
 /* CMS Article Styling - Enhanced Readability */

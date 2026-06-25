@@ -29,7 +29,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       if (token) {
         fetchCurrentUser();
       } else {
-        router.push('/login');
+        router.push('/');
       }
     }
   }, [isAuthenticated, router, fetchCurrentUser]);
@@ -40,7 +40,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleLogout = () => {
     logout();
-    router.push('/login');
+    router.push('/');
   };
 
   const getRoleColor = (role: string) => {

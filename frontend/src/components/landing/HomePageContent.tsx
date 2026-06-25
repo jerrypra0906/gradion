@@ -57,6 +57,13 @@ export function HomePageContent() {
     fetchResources();
   }, []);
 
+  // Logged-in users land on the Dashboard, not the marketing homepage.
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
   const fetchPlans = async () => {
     try {
       setLoadingPlans(true);
@@ -134,6 +141,11 @@ export function HomePageContent() {
     if (weeks === 52) return '1 tahun';
     return `${weeks} minggu`;
   };
+
+  // While authenticated, render nothing — the effect above redirects to /dashboard.
+  if (isAuthenticated) {
+    return null;
+  }
 
   return (
     <>
