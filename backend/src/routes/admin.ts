@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { EmailService } from '../services/email.service.js';
-import { formatErrorMessage } from '../utils/errorResponse.js';
+import { formatErrorMessage, getUserFacingError } from '../utils/errorResponse.js';
 import { Prisma, SubscriptionPlan } from '@prisma/client';
 import { listAutismCases, seedMockAutismCases } from '../services/abaAutismCase.service.js';
+import { UserService } from '../services/user.service.js';
+import { Role } from '../types/index.js';
 
 export async function adminRoutes(
   fastify: FastifyInstance,
@@ -644,6 +646,104 @@ export async function adminRoutes(
   );
 
   // Get all users with subscription info (admin only)
+  const adminCreateUserSchema = z.object({
+    name: z.string().trim().min(2),
+    email: z.string().trim().email().transform((value) => value.toLowerCase()),
+    password: z.string().min(6),
+    role: z.enum(['admin', 'therapist', 'consultant', 'parent']),
+    phone_number: z.string().trim().optional(),
+    is_email_verified: z.boolean().optional(),
+  });
+
+  const adminUpdateUserSchema = z.object({
+    name: z.string().min(2).optional(),
+    role: z.enum(['admin', 'therapist', 'consultant', 'parent']).optional(),
+    phone_number: z.string().nullable().optional(),
+    is_email_verified: z.boolean().optional(),
+  });
+
+  const userService = new UserService();
+
+  fastify.get(
+    '/users/:id',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = parseInt(id, 10);
+      if (Number.isNaN(userId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid user id' };
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          subscription: true,
+          aiTokenWallet: true,
+          _count: {
+            select: {
+              children: true,
+              parentLogs: true,
+              sessions: true,
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        reply.code(404);
+        return { success: false, error: 'User not found' };
+      }
+
+      return { success: true, data: user };
+    }
+  );
+
+  fastify.post(
+    '/users',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      try {
+        const body = adminCreateUserSchema.parse(request.body);
+        const user = await userService.createUser({
+          name: body.name,
+          email: body.email,
+          password: body.password,
+          role: body.role as Role,
+          phone_number: body.phone_number,
+          is_email_verified: body.is_email_verified ?? true,
+        });
+        reply.code(201);
+        return { success: true, data: user };
+      } catch (error: unknown) {
+        reply.code(400);
+        return { success: false, error: getUserFacingError(error, 'Failed to create user') };
+      }
+    }
+  );
+
+  fastify.put(
+    '/users/:id',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = parseInt(id, 10);
+      if (Number.isNaN(userId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid user id' };
+      }
+
+      try {
+        const body = adminUpdateUserSchema.parse(request.body);
+        const user = await userService.updateUser(userId, body);
+        return { success: true, data: user };
+      } catch (error: unknown) {
+        reply.code(400);
+        return { success: false, error: getUserFacingError(error, 'Failed to update user') };
+      }
+    }
+  );
+
   fastify.get(
     '/users',
     { preHandler: [authenticate, requireRole('admin')] },

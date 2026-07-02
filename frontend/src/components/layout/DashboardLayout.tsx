@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
@@ -8,11 +8,67 @@ import { Button } from '@/components/ui/Button';
 import { BannerStrip } from '@/components/BannerStrip';
 import { Footer } from './Footer';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { GradionLogo } from '@/components/landing/GradionLogo';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getAuthToken, type BannerAudience } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import type { TranslationKey } from '@/lib/translations';
 
 interface DashboardLayoutProps {
   children: ReactNode;
+}
+
+type AdminMenuItem = {
+  href: string;
+  label: string;
+};
+
+type AdminMenuGroup = {
+  title: string;
+  items: AdminMenuItem[];
+};
+
+function buildAdminMenuGroups(t: (key: TranslationKey) => string): AdminMenuGroup[] {
+  return [
+    {
+      title: t('adminMenuUsersBilling'),
+      items: [
+        { href: '/dashboard/admin/analytics', label: t('analytics') },
+        { href: '/dashboard/admin/users', label: t('users') },
+        { href: '/dashboard/admin/quota', label: t('quota') },
+        { href: '/dashboard/admin/subscriptions/plans', label: t('plans') },
+        { href: '/dashboard/admin/promotion-codes', label: t('promoCodes') },
+        { href: '/dashboard/sessions', label: t('sessions') },
+      ],
+    },
+    {
+      title: t('adminMenuContent'),
+      items: [
+        { href: '/dashboard/cms', label: t('cms') },
+        { href: '/dashboard/landing-page', label: t('landingPage') },
+        { href: '/dashboard/banners', label: t('banners') },
+        { href: '/dashboard/goals', label: t('goals') },
+        { href: '/dashboard/video-validation', label: t('videoValidation') },
+        { href: '/dashboard/modules', label: t('modules') },
+      ],
+    },
+    {
+      title: t('adminMenuAba'),
+      items: [
+        { href: '/dashboard/admin/initial-observation-template', label: t('adminMenuInitialObservation') },
+        { href: '/dashboard/admin/learning-modules', label: t('adminMenuModulesCms') },
+        { href: '/dashboard/admin/master-programs', label: t('adminMenuMasterPrograms') },
+        { href: '/dashboard/admin/autism-cases', label: t('adminMenuAutismCases') },
+      ],
+    },
+    {
+      title: t('adminMenuTools'),
+      items: [
+        { href: '/dashboard/admin/ai-content-review', label: t('adminMenuAiReview') },
+        { href: '/dashboard/admin/send-email', label: t('adminMenuSendEmail') },
+      ],
+    },
+  ];
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -22,6 +78,43 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
+  const isAdmin = user?.role === 'admin';
+  const adminMenuGroups = buildAdminMenuGroups(t);
+
+  useEffect(() => {
+    if (!adminMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
+        setAdminMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAdminMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [adminMenuOpen]);
+
+  const isAdminPathActive = (href: string) => {
+    if (href === '/dashboard/admin/subscriptions/plans') {
+      return pathname.startsWith('/dashboard/admin/subscriptions');
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  const isAnyAdminPathActive = adminMenuGroups.some((group) =>
+    group.items.some((item) => isAdminPathActive(item.href)),
+  );
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -46,15 +139,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'bg-red-100 text-red-800';
+        return 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/30';
       case 'therapist':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
       case 'consultant':
-        return 'bg-indigo-100 text-indigo-800';
+        return 'bg-[#1A2B4C]/8 text-[#1A2B4C] border border-[#1A2B4C]/15';
       case 'parent':
-        return 'bg-green-100 text-green-800';
+        return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-[#E5E8EB] text-[#1A2B4C]/70 border border-[#E5E8EB]';
     }
   };
 
@@ -79,27 +172,29 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   const desktopLinkClass = (href: string) =>
-    `${
+    cn(
+      'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors',
       isActive(href)
-        ? 'border-blue-500 text-gray-900'
-        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`;
+        ? 'border-[#00C1B2] text-[#1A2B4C]'
+        : 'border-transparent text-[#1A2B4C]/55 hover:border-[#E5E8EB] hover:text-[#1A2B4C]',
+    );
 
   const mobileLinkClass = (href: string) =>
-    `${
+    cn(
+      'block pl-3 pr-4 py-2 border-l-4 text-base font-medium transition-colors',
       isActive(href)
-        ? 'bg-blue-50 border-blue-500 text-blue-700'
-        : 'border-transparent text-gray-700 hover:bg-gray-50 hover:border-gray-200'
-    } block pl-3 pr-4 py-2 border-l-4 text-base font-medium`;
+        ? 'bg-[#00C1B2]/10 border-[#00C1B2] text-[#1A2B4C]'
+        : 'border-transparent text-[#1A2B4C]/70 hover:bg-[#FDF8F1] hover:border-[#E5E8EB]',
+    );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-[#FDF8F1] flex flex-col">
+      <nav className="bg-white border-b border-[#E5E8EB] shadow-sm shadow-[#1A2B4C]/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Link href="/" className="flex-shrink-0">
-                <span className="text-xl font-bold text-blue-700 tracking-tight">Gradion</span>
+          <div className="flex justify-between h-16 md:h-[4.25rem]">
+            <div className="flex items-center min-w-0">
+              <Link href="/dashboard" className="flex-shrink-0 rounded-lg -ml-1 px-1 py-1 transition-opacity hover:opacity-85">
+                <GradionLogo size="md" />
               </Link>
               {/* Desktop menu */}
               <div className="hidden md:ml-8 md:flex md:space-x-8">
@@ -119,12 +214,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {t('reports')}
                   </Link>
                 )}
-                {showClinicalNav && user.role !== 'parent' && (
+                {showClinicalNav && user.role !== 'parent' && !isAdmin && (
                   <Link href="/dashboard/goals" className={desktopLinkClass('/dashboard/goals')}>
                     {t('goals')}
                   </Link>
                 )}
-                {showClinicalNav && user.role !== 'parent' && (
+                {showClinicalNav && user.role !== 'parent' && !isAdmin && (
                   <Link
                     href="/dashboard/video-validation"
                     className={desktopLinkClass('/dashboard/video-validation')}
@@ -132,7 +227,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {t('videoValidation')}
                   </Link>
                 )}
-                {user.role !== 'parent' && (
+                {user.role !== 'parent' && !isAdmin && (
                   <Link href="/dashboard/modules" className={desktopLinkClass('/dashboard/modules')}>
                     {t('modules')}
                   </Link>
@@ -140,23 +235,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Link href="/dashboard/profile" className={desktopLinkClass('/dashboard/profile')}>
                   {t('profile')}
                 </Link>
-                {user.role === 'admin' && (
-                  <div className="relative">
+                {isAdmin && (
+                  <div className="relative" ref={adminMenuRef}>
                     <button
                       type="button"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname.startsWith('/dashboard/admin')
-                          ? 'border-blue-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
+                      aria-haspopup="menu"
+                      aria-expanded={adminMenuOpen}
+                      className={cn(
+                        'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors',
+                        isAnyAdminPathActive
+                          ? 'border-[#00C1B2] text-[#1A2B4C]'
+                          : 'border-transparent text-[#1A2B4C]/55 hover:border-[#E5E8EB] hover:text-[#1A2B4C]',
+                      )}
                       onClick={() => setAdminMenuOpen((open) => !open)}
                     >
                       {t('admin')}
                       <svg
-                        className="ml-1 h-4 w-4"
+                        className={cn('ml-1 h-4 w-4 transition-transform', adminMenuOpen && 'rotate-180')}
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 20 20"
                         fill="currentColor"
+                        aria-hidden
                       >
                         <path
                           fillRule="evenodd"
@@ -166,115 +265,40 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                       </svg>
                     </button>
                     {adminMenuOpen && (
-                      <div className="absolute z-20 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
-                        <div className="py-1 text-sm text-gray-700">
-                          <Link
-                            href="/dashboard/admin/analytics"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('analytics')}
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/users"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('users')}
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/quota"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('quota')}
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/subscriptions/plans"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('plans')}
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/promotion-codes"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('promoCodes')}
-                          </Link>
-                          <Link
-                            href="/dashboard/cms"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('cms')}
-                          </Link>
-                          <Link
-                            href="/dashboard/landing-page"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('landingPage')}
-                          </Link>
-                          <Link
-                            href="/dashboard/banners"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            {t('banners')}
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/initial-observation-template"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            Initial Observation CMS
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/learning-modules"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            Modules CMS
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/master-programs"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            ABA Master Programs
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/autism-cases"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            Autism Cases (Initial Programs)
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/ai-content-review"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            AI Content Review
-                          </Link>
-                          <Link
-                            href="/dashboard/admin/send-email"
-                            className="block px-4 py-2 hover:bg-gray-100"
-                            onClick={() => setAdminMenuOpen(false)}
-                          >
-                            Send Email
-                          </Link>
+                      <div
+                        role="menu"
+                        className="absolute right-0 z-30 mt-2 w-[min(42rem,calc(100vw-2rem))] rounded-2xl border border-[#E5E8EB] bg-white p-4 shadow-xl shadow-[#1A2B4C]/10"
+                      >
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          {adminMenuGroups.map((group) => (
+                            <div key={group.title}>
+                              <p className="mb-2 px-2 text-[11px] font-bold uppercase tracking-wider text-[#1A2B4C]/45">
+                                {group.title}
+                              </p>
+                              <div className="space-y-0.5">
+                                {group.items.map((item) => (
+                                  <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    role="menuitem"
+                                    className={cn(
+                                      'block rounded-lg px-3 py-2 text-sm transition-colors',
+                                      isAdminPathActive(item.href)
+                                        ? 'bg-[#00C1B2]/10 font-semibold text-[#00A896]'
+                                        : 'text-[#1A2B4C]/80 hover:bg-[#FDF8F1] hover:text-[#00A896]',
+                                    )}
+                                    onClick={() => setAdminMenuOpen(false)}
+                                  >
+                                    {item.label}
+                                  </Link>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
                   </div>
-                )}
-                {user.role === 'admin' && (
-                  <Link href="/dashboard/sessions" className={desktopLinkClass('/dashboard/sessions')}>
-                    {t('sessions')}
-                  </Link>
                 )}
               </div>
             </div>
@@ -285,7 +309,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
                 {user.role}
               </span>
-              <span className="text-sm text-gray-700 max-w-[160px] truncate" title={user.name}>
+              <span className="text-sm text-[#1A2B4C]/80 max-w-[160px] truncate" title={user.name}>
                 {user.name}
               </span>
               <Button variant="outline" size="sm" onClick={handleLogout}>
@@ -298,7 +322,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <LanguageSwitcher />
               <button
                 type="button"
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                className="inline-flex items-center justify-center p-2 rounded-md text-[#1A2B4C]/55 hover:text-[#1A2B4C] hover:bg-[#FDF8F1] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#00C1B2]/40"
                 aria-controls="mobile-menu"
                 aria-expanded={mobileMenuOpen}
                 onClick={() => setMobileMenuOpen((open) => !open)}
@@ -322,7 +346,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Mobile menu panel */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200" id="mobile-menu">
+          <div className="md:hidden border-t border-[#E5E8EB]" id="mobile-menu">
             <div className="pt-2 pb-3 space-y-1">
               <Link href="/dashboard" className={mobileLinkClass('/dashboard')} onClick={() => setMobileMenuOpen(false)}>
                 {t('dashboard')}
@@ -388,117 +412,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
               {user.role === 'admin' && (
                 <>
-                  <Link
-                    href="/dashboard/admin/analytics"
-                    className={mobileLinkClass('/dashboard/admin/analytics')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('analytics')}
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/users"
-                    className={mobileLinkClass('/dashboard/admin/users')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('users')}
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/quota"
-                    className={mobileLinkClass('/dashboard/admin/quota')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('quota')}
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/subscriptions/plans"
-                    className={mobileLinkClass('/dashboard/admin/subscriptions')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('plans')}
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/promotion-codes"
-                    className={mobileLinkClass('/dashboard/admin/promotion-codes')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('promoCodes')}
-                  </Link>
-                  <Link
-                    href="/dashboard/cms"
-                    className={mobileLinkClass('/dashboard/cms')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('cms')}
-                  </Link>
-                  <Link
-                    href="/dashboard/landing-page"
-                    className={mobileLinkClass('/dashboard/landing-page')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('landingPage')}
-                  </Link>
-                  <Link
-                    href="/dashboard/banners"
-                    className={mobileLinkClass('/dashboard/banners')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    {t('banners')}
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/initial-observation-template"
-                    className={mobileLinkClass('/dashboard/admin/initial-observation-template')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Initial Observation CMS
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/learning-modules"
-                    className={mobileLinkClass('/dashboard/admin/learning-modules')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Modules CMS
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/master-programs"
-                    className={mobileLinkClass('/dashboard/admin/master-programs')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    ABA Master Programs
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/autism-cases"
-                    className={mobileLinkClass('/dashboard/admin/autism-cases')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Autism Cases
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/ai-content-review"
-                    className={mobileLinkClass('/dashboard/admin/ai-content-review')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    AI Content Review
-                  </Link>
-                  <Link
-                    href="/dashboard/admin/send-email"
-                    className={mobileLinkClass('/dashboard/admin/send-email')}
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
-                    Send Email
-                  </Link>
+                  {adminMenuGroups.map((group) => (
+                    <div key={group.title}>
+                      <p className="pl-3 pr-4 py-2 text-xs font-bold uppercase tracking-wider text-[#1A2B4C]/45">
+                        {group.title}
+                      </p>
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={mobileLinkClass(item.href)}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ))}
                 </>
               )}
-              {user.role === 'admin' && (
-                <Link
-                  href="/dashboard/sessions"
-                  className={mobileLinkClass('/dashboard/sessions')}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {t('sessions')}
-                </Link>
-              )}
             </div>
-            <div className="pt-4 pb-3 border-t border-gray-200">
+            <div className="pt-4 pb-3 border-t border-[#E5E8EB]">
               <div className="flex items-center px-4">
                 <div className="flex-shrink-0">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
@@ -506,13 +440,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   </span>
                 </div>
                 <div className="ml-3">
-                  <div className="text-base font-medium text-gray-800">{user.name}</div>
-                  <div className="text-sm font-medium text-gray-500">{user.email}</div>
+                  <div className="text-base font-medium text-[#1A2B4C]">{user.name}</div>
+                  <div className="text-sm font-medium text-[#1A2B4C]/55">{user.email}</div>
                 </div>
               </div>
               <div className="mt-3 space-y-1">
                 <button
-                  className="block w-full text-left px-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-100"
+                  className="block w-full text-left px-4 py-2 text-base font-medium text-[#1A2B4C]/80 hover:bg-[#FDF8F1] transition-colors"
                   onClick={() => {
                     setMobileMenuOpen(false);
                     handleLogout();

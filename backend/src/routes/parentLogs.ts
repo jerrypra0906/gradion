@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
+import { syncMissingParentLogsForChild } from '../services/parentLogFromAba.service.js';
 
 function isAssignedStaff(role: string) {
   return role === 'therapist' || role === 'consultant';
@@ -238,6 +239,13 @@ export async function parentLogsRoutes(
 
       if (status) {
         where.status = status;
+      }
+
+      if (child_id) {
+        const childIdNum = parseInt(child_id, 10);
+        if (!Number.isNaN(childIdNum)) {
+          await syncMissingParentLogsForChild(childIdNum);
+        }
       }
 
       const logs = await prisma.parentLog.findMany({

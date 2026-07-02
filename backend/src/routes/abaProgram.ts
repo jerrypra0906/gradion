@@ -15,21 +15,15 @@ import {
 } from '../services/ai.service.js';
 import {
   extractTherapyNotesJsonFromImage,
-  generateWeeklyAbaPlanJson,
 } from '../services/abaProgram.service.js';
 import { ensureGuidedFlow } from '../services/abaProgram.service.js';
 import { translateWeeklyAbaPlanJson } from '../services/abaProgram.service.js';
-import { listMasterPrograms, syncWeeklyPlanToMasterPrograms } from '../services/abaMasterProgram.service.js';
+import { syncWeeklyPlanToMasterPrograms } from '../services/abaMasterProgram.service.js';
 import {
-  buildObservationText,
-  findSimilarAutismCases,
-  syncAutismCaseFromWeeklyPlan,
-} from '../services/abaAutismCase.service.js';
-import {
-  getEnhancedLearningContextForChild,
-  getPreviousWeekSessionContext,
   recordLearningInsightForWeek,
 } from '../services/abaProgramLearning.service.js';
+import { syncParentLogForCompletedSession } from '../services/parentLogFromAba.service.js';
+import { generateAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,12 +53,6 @@ async function canAccessChild(
     return !!row;
   }
   return false;
-}
-
-function parseYmd(ymd: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
-  const d = new Date(`${ymd}T00:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 async function ensureLocalTherapyNotesDir() {
@@ -160,155 +148,47 @@ export async function abaProgramRoutes(
           return { success: false, error: 'Forbidden' };
         }
 
+        const child = await prisma.child.findUnique({
+          where: { id: childId },
+          select: { parent_id: true },
+        });
+        if (!child) {
+          reply.code(404);
+          return { success: false, error: 'Child not found' };
+        }
+        const billingUserId = user.role === 'parent' ? user.id : child.parent_id;
+
         const body = (request.body || {}) as { week_start?: string; lang?: 'en' | 'id' };
         const lang = body.lang === 'id' ? 'id' : 'en';
         if (!body.week_start) {
           reply.code(400);
           return { success: false, error: 'week_start is required (YYYY-MM-DD, Monday of week)' };
         }
-        const weekStart = parseYmd(body.week_start);
-        if (!weekStart) {
-          reply.code(400);
-          return { success: false, error: 'Invalid week_start' };
-        }
 
-        const access = await hasAIAccess(user.id);
-        if (!access.hasAccess) {
-          reply.code(403);
-          return { success: false, error: access.reason || 'AI access denied' };
-        }
-
-        const child = await prisma.child.findUnique({ where: { id: childId } });
-        if (!child) {
-          reply.code(404);
-          return { success: false, error: 'Child not found' };
-        }
-
-        const assessmentMd =
-          lang === 'id'
-            ? child.initial_assessment_report_id || child.initial_assessment_report
-            : child.initial_assessment_report || child.initial_assessment_report_id;
-
-        if (!assessmentMd) {
-          reply.code(400);
-          return {
-            success: false,
-            error:
-              'Initial assessment is missing. Generate the Initial Assessment on the child page first.',
-          };
-        }
-
-        const prevWeek = await prisma.childAbaProgramWeek.findFirst({
-          where: { child_id: childId, week_start: { lt: weekStart }, status: 'completed' },
-          orderBy: { week_start: 'desc' },
-        });
-
-        const priorWeekCount = await prisma.childAbaProgramWeek.count({
-          where: { child_id: childId, status: 'completed' },
-        });
-        const isFirstProgram = priorWeekCount === 0;
-
-        const prevSessionContext = prevWeek ? await getPreviousWeekSessionContext(prevWeek.id) : null;
-        const learningInsights = await getEnhancedLearningContextForChild(childId, 4);
-
-        const observationText = buildObservationText({
-          initialObservation: child.initial_observation,
-          assessmentMarkdown: assessmentMd,
-          diagnosis: child.diagnosis,
-          childName: child.name,
-        });
-
-        const similarCases = await findSimilarAutismCases({
-          observationText,
-          take: 5,
-        });
-
-        const goals = await prisma.goal.findMany({
-          where: { child_id: childId, status: 'active' },
-          select: { title: true, description: true, target_date: true },
-          take: 10,
-        });
-
-        const estimated = 1400;
-        const quota = await checkTokenQuota(user.id, estimated);
-        if (!quota.hasQuota) {
-          reply.code(403);
-          return { success: false, error: quota.reason || 'Insufficient AI tokens' };
-        }
-
-        const masterPrograms = await listMasterPrograms({ language: lang, take: 120 });
-
-        const ai = await generateWeeklyAbaPlanJson({
-          language: lang,
-          weekStartYmd: body.week_start,
-          childName: child.name,
-          diagnosis: child.diagnosis,
-          assessmentMarkdown: assessmentMd,
-          initialObservationJson: child.initial_observation,
-          previousTherapyNotesJson: prevSessionContext?.therapy_notes_json ?? prevWeek?.therapy_notes_json ?? null,
-          previousGuidedResultsJson: prevSessionContext?.guided_results_json ?? null,
-          learningInsights,
-          similarAutismCases: similarCases,
-          masterPrograms,
-          isFirstProgram,
-          statedGoals: goals,
-          clinicalReviewComments: learningInsights?.clinical_reviews ?? null,
-        });
-
-        if (!ai) {
-          reply.code(500);
-          return {
-            success: false,
-            error:
-              'Failed to generate program. Configure GEMINI_API_KEY (preferred) or OPENAI_API_KEY.',
-          };
-        }
-
-        await updateTokenUsage(user.id, ai.tokensUsed);
-
-        const plan = await syncWeeklyPlanToMasterPrograms({
-          planJson: ai.json as any,
-          language: lang,
-        });
-        const mainstream = Boolean(plan?.mainstream_goal_met);
-
-        await syncAutismCaseFromWeeklyPlan({
+        const result = await generateAbaWeekForChild({
           childId,
-          childName: child.name,
-          language: lang,
-          initialObservation: child.initial_observation,
-          assessmentMarkdown: assessmentMd,
-          diagnosis: child.diagnosis,
-          planJson: plan,
-          isFirstProgram,
+          userId: billingUserId,
+          weekStartYmd: body.week_start,
+          lang,
         });
 
-        const week = await prisma.childAbaProgramWeek.upsert({
-          where: { child_id_week_start: { child_id: childId, week_start: weekStart } },
-          create: {
-            child_id: childId,
-            week_start: weekStart,
-            status: 'active',
-            plan_json: plan as any,
-            mainstream_goal_met: mainstream,
-            review_status: 'pending',
-          },
-          update: {
-            status: 'active',
-            plan_json: plan as any,
-            mainstream_goal_met: mainstream,
-            // Re-generating resets the week to "pending" admin review.
-            review_status: 'pending',
-            reviewed_at: null,
-            reviewed_by: null,
-          },
-        });
+        if (!result.ok) {
+          if (result.code) reply.code(result.code);
+          return { success: false, error: result.error };
+        }
 
-        // Hide the freshly generated plan from the parent until an admin approves it.
+        const week = await prisma.childAbaProgramWeek.findUnique({
+          where: { id: result.weekId },
+        });
+        if (!week) {
+          reply.code(500);
+          return { success: false, error: 'Failed to load generated program week' };
+        }
+
         const gatedWeek =
           user.role === 'parent' ? { ...week, plan_json: null, therapy_notes_json: null } : week;
 
-        return { success: true, data: { week: gatedWeek, tokens_used: ai.tokensUsed } };
+        return { success: true, data: { week: gatedWeek, tokens_used: result.tokensUsed } };
       } catch (error: unknown) {
         logger.error({ err: error }, 'Failed to generate ABA week');
         reply.code(500);
@@ -518,6 +398,7 @@ export async function abaProgramRoutes(
         });
 
         await recordLearningInsightForWeek(weekId);
+        await syncParentLogForCompletedSession(updated.id);
 
         return { success: true, data: { session: updated } };
       } catch (error: unknown) {
@@ -673,6 +554,7 @@ export async function abaProgramRoutes(
         });
 
         await recordLearningInsightForWeek(weekId);
+        await syncParentLogForCompletedSession(updated.id);
 
         return {
           success: true,

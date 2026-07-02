@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 96" width="360" height="96" role="img" aria-label="Gradion">
-  <rect width="100%" height="100%" rx="12" fill="#f8fafc"/>
-  <text x="24" y="58" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="40" font-weight="700" fill="#2563eb">Gradion</text>
-  <text x="24" y="82" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#64748b">ABA � Recovery is possible</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 56" width="220" height="56" role="img" aria-label="Gradion">
+  <path d="M10 38.5 H26.5 C34.5 38.5 38.5 34 38.5 28.5 C38.5 23 34.5 18.5 28.5 18.5 C23 18.5 19 21.5 18 26.5 M18 26.5 V38.5 M28.5 18.5 C33 18.5 36.5 14.5 38 9.5 C39 6 40.5 4 43 2.5" stroke="#0C1B33" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="21" cy="11.5" r="6.25" fill="#1BB5A8"/>
+  <path d="M43.5 1.2 L44.55 4.05 L47.55 4.05 L45.1 5.95 L46.15 8.8 L43.5 7.05 L40.85 8.8 L41.9 5.95 L39.45 4.05 L42.45 4.05 L43.5 1.2 Z" fill="#F5B731"/>
+  <text x="62" y="38" font-family="Inter, system-ui, sans-serif" font-size="26" font-weight="700" fill="#0C1B33" letter-spacing="-0.03em">gradion</text>
 </svg>

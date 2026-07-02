@@ -224,6 +224,7 @@ model ChildAbaProgramSession {
 
   week ChildAbaProgramWeek @relation(fields: [week_id], references: [id], onDelete: Cascade)
   user User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parentLog ParentLog?
 
   @@index([week_id])
   @@index([user_id])
@@ -401,12 +402,15 @@ model ParentLog {
   ai_summary        String?   @db.Text
   therapist_comment String?   @db.Text
   status            LogStatus @default(pending)
+  /// When set, this log was auto-created from a completed ABA program session.
+  aba_session_id    Int?      @unique
   created_at        DateTime  @default(now())
   updated_at        DateTime  @updatedAt
 
   parent  User  @relation("ParentLogs", fields: [parent_id], references: [id], onDelete: Cascade)
   creator User  @relation("LogCreators", fields: [creator_id], references: [id], onDelete: Cascade)
   child   Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  abaSession ChildAbaProgramSession? @relation(fields: [aba_session_id], references: [id], onDelete: SetNull)
 
   @@index([child_id, log_date])
   @@index([parent_id, log_date])

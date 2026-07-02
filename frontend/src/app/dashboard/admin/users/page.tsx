@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { apiClient, User, Subscription, AITokenWallet, ApiResponse } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -18,6 +19,7 @@ interface UserWithSubscription extends User {
 }
 
 export default function AdminUsersPage() {
+  const pathname = usePathname();
   const { user } = useAuthStore();
   const [users, setUsers] = useState<UserWithSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ export default function AdminUsersPage() {
     if (user && user.role === 'admin') {
       fetchUsers();
     }
-  }, [user, page, searchTerm, roleFilter]);
+  }, [user, page, searchTerm, roleFilter, pathname]);
 
   const fetchUsers = async () => {
     try {
@@ -110,9 +112,14 @@ export default function AdminUsersPage() {
   return (
     <DashboardLayout>
       <div className="px-4 py-6 sm:px-0">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
-          <p className="mt-2 text-gray-600">Manage users and their subscriptions</p>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+            <p className="mt-2 text-gray-600">Manage users and their subscriptions</p>
+          </div>
+          <Link href="/dashboard/admin/users/new">
+            <Button>Create User</Button>
+          </Link>
         </div>
 
         {/* Filters */}

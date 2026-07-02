@@ -9,6 +9,7 @@ import {
   updateTokenUsage,
 } from '../services/ai.service.js';
 import { logger } from '../utils/logger.js';
+import { syncMissingParentLogsForChild } from '../services/parentLogFromAba.service.js';
 
 const childReportQuerySchema = z.object({
   range: z
@@ -91,8 +92,17 @@ function getWeekStartDate(date: Date) {
 }
 
 type SkillEntry = { name: string; rating: number };
+type EnrichedSkillEntry = SkillEntry & {
+  domain?: string;
+  target?: string;
+  trial_data?: string;
+};
 
 function parseSkills(value: unknown): SkillEntry[] {
+  return parseSkillsEnriched(value).map(({ name, rating }) => ({ name, rating }));
+}
+
+function parseSkillsEnriched(value: unknown): EnrichedSkillEntry[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -110,12 +120,57 @@ function parseSkills(value: unknown): SkillEntry[] {
         typeof record.rating === 'number'
           ? record.rating
           : Number(record.rating ?? 0);
-      return {
+      const skill: EnrichedSkillEntry = {
         name: rawName.trim(),
         rating: Math.min(Math.max(Math.round(numericRating) || 3, 1), 5),
       };
+      if (typeof record.domain === 'string' && record.domain.trim()) {
+        skill.domain = record.domain.trim();
+      }
+      if (typeof record.target === 'string' && record.target.trim()) {
+        skill.target = record.target.trim();
+      }
+      if (typeof record.trial_data === 'string' && record.trial_data.trim()) {
+        skill.trial_data = record.trial_data.trim();
+      }
+      return skill;
     })
-    .filter(Boolean) as SkillEntry[];
+    .filter(Boolean) as EnrichedSkillEntry[];
+}
+
+function mapRecentLog(log: {
+  id: number;
+  log_date: Date;
+  rating: number;
+  status: string;
+  skills_practiced: unknown;
+  activities: string | null;
+  therapist_comment: string | null;
+  duration_hours: number | null;
+  aba_session_id: number | null;
+  creator_role: string;
+  creator?: { id: number; name: string; email: string; role: string } | null;
+}) {
+  return {
+    id: log.id,
+    log_date: log.log_date.toISOString(),
+    rating: log.rating,
+    status: log.status,
+    skills_practiced: parseSkillsEnriched(log.skills_practiced),
+    activities: log.activities || '',
+    therapist_comment: log.therapist_comment,
+    duration_hours: log.duration_hours ?? 3,
+    aba_session_id: log.aba_session_id,
+    creator_role: log.creator_role,
+    creator: log.creator
+      ? {
+          id: log.creator.id,
+          name: log.creator.name,
+          email: log.creator.email,
+          role: log.creator.role,
+        }
+      : undefined,
+  };
 }
 
 export async function reportsRoutes(
@@ -197,6 +252,8 @@ export async function reportsRoutes(
       }
       const { startDate, endDate, rangeDays } = dateRange;
 
+      await syncMissingParentLogsForChild(child_id);
+
       const [logs, sessions, goals] = await Promise.all([
         prisma.parentLog.findMany({
           where: {
@@ -208,6 +265,11 @@ export async function reportsRoutes(
           },
           orderBy: {
             log_date: 'asc',
+          },
+          include: {
+            creator: {
+              select: { id: true, name: true, email: true, role: true },
+            },
           },
         }),
         prisma.session.findMany({
@@ -279,15 +341,7 @@ export async function reportsRoutes(
         count: goals.filter((goal) => goal.status === status).length,
       }));
 
-      const recentLogs = logs.slice(-5).reverse().map((log) => ({
-        id: log.id,
-        log_date: log.log_date.toISOString(),
-        rating: log.rating,
-        status: log.status,
-        skills_practiced: parseSkills(log.skills_practiced),
-        activities: log.activities,
-        therapist_comment: log.therapist_comment,
-      }));
+      const recentLogs = logs.slice(-5).reverse().map((log) => mapRecentLog(log));
 
       // Prepare all activity logs with full details (for potential AI regeneration)
       const allActivityLogs = logs.map((log) => ({
@@ -347,8 +401,11 @@ export async function reportsRoutes(
               recentLogs: recentLogs.map((log) => ({
                 log_date: log.log_date,
                 rating: log.rating,
-                activities: log.activities,
-                skills_practiced: log.skills_practiced,
+                activities: log.activities || '',
+                skills_practiced: log.skills_practiced.map(({ name, rating }) => ({
+                  name,
+                  rating,
+                })),
               })),
               allActivityLogs,
               language: 'id',
@@ -517,6 +574,8 @@ export async function reportsRoutes(
       }
       const { startDate, endDate, rangeDays } = dateRange;
 
+      await syncMissingParentLogsForChild(child_id);
+
       // Fetch report data (same as GET endpoint)
       const [logs, sessions, goals] = await Promise.all([
         prisma.parentLog.findMany({
@@ -529,6 +588,11 @@ export async function reportsRoutes(
           },
           orderBy: {
             log_date: 'asc',
+          },
+          include: {
+            creator: {
+              select: { id: true, name: true, email: true, role: true },
+            },
           },
         }),
         prisma.session.findMany({

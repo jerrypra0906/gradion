@@ -30,7 +30,7 @@ function sliderColorGreenToRed(value: number, min: number, max: number) {
 function rangeTrackStyle(value: number, min: number, max: number, color: string) {
   const pct = ((clamp(value, min, max) - min) / (max - min)) * 100;
   return {
-    background: `linear-gradient(to right, ${color} 0%, ${color} ${pct}%, rgb(229 231 235) ${pct}%, rgb(229 231 235) 100%)`,
+    background: `linear-gradient(to right, ${color} 0%, ${color} ${pct}%, #E5E8EB ${pct}%, #E5E8EB 100%)`,
     height: '8px',
     borderRadius: '9999px',
     appearance: 'none' as const,
@@ -62,15 +62,15 @@ function FsField({
   const sVal = String(obs[sKey] ?? '').trim() === '' ? 1 : Number(obs[sKey]);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="text-sm font-medium text-gray-900 mb-3">{labelForField(field, language)}</div>
+    <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
+      <div className="mb-3 text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</div>
       <div className="grid grid-cols-2 gap-3">
         {(['f', 's'] as const).map((side) => {
           const key = side === 'f' ? fKey : sKey;
           const val = side === 'f' ? fVal : sVal;
           return (
             <div key={side}>
-              <label className="block text-xs text-gray-600 mb-1">
+              <label className="mb-1 block text-xs text-[#1A2B4C]/60">
                 {side === 'f' ? (language === 'id' ? 'Frekuensi' : 'Frequency') : 'Severity'}
               </label>
               <input
@@ -80,10 +80,10 @@ function FsField({
                 step={1}
                 value={val}
                 onChange={(e) => onChange({ ...obs, [key]: e.target.value })}
-                className="w-full"
+                className="w-full accent-[#00C1B2]"
                 style={rangeTrackStyle(val, 1, 5, sliderColorGreenToRed(val, 1, 5))}
               />
-              <div className="mt-1 text-xs text-gray-600">
+              <div className="mt-1 text-xs font-medium text-[#1A2B4C]/70">
                 {String(obs[key] ?? '').trim() === '' ? '—' : obs[key]}
               </div>
             </div>
@@ -107,8 +107,8 @@ function PercentField({
 }) {
   const val = String(obs[field.key] ?? '').trim() === '' ? 0 : Number(obs[field.key]);
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <label className="block text-sm font-medium text-gray-900 mb-1">{labelForField(field, language)}</label>
+    <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
+      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
       <input
         type="range"
         min={0}
@@ -116,10 +116,10 @@ function PercentField({
         step={1}
         value={val}
         onChange={(e) => onChange({ ...obs, [field.key]: e.target.value })}
-        className="w-full"
+        className="w-full accent-[#00C1B2]"
         style={rangeTrackStyle(val, 0, 100, sliderColorRedToGreen(val, 0, 100))}
       />
-      <div className="mt-1 text-xs text-gray-600">
+      <div className="mt-1 text-xs font-medium text-[#1A2B4C]/70">
         {String(obs[field.key] ?? '').trim() === '' ? '—' : `${obs[field.key]}%`}
       </div>
     </div>
@@ -140,27 +140,27 @@ function renderField(
   }
   if (field.type === 'number_minutes') {
     return (
-      <div key={field.key} className="rounded-lg border border-gray-200 bg-white p-4">
-        <label className="block text-sm font-medium text-gray-900 mb-1">{labelForField(field, language)}</label>
+      <div key={field.key} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
+        <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
         <input
           type="number"
           min={0}
           value={obs[field.key] ?? ''}
           onChange={(e) => onChange({ ...obs, [field.key]: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          className="w-full rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-[#1A2B4C] focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
         />
       </div>
     );
   }
   return (
-    <div key={field.key} className="rounded-lg border border-gray-200 bg-white p-4 md:col-span-2">
-      <label className="block text-sm font-medium text-gray-900 mb-1">{labelForField(field, language)}</label>
+    <div key={field.key} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4 md:col-span-2">
+      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
       <input
         type="text"
         value={obs[field.key] ?? ''}
         onChange={(e) => onChange({ ...obs, [field.key]: e.target.value })}
         placeholder={language === 'id' ? 'Isi perilaku…' : 'Specify behavior…'}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+        className="w-full rounded-lg border border-[#E5E8EB] bg-white px-3 py-2 text-[#1A2B4C] placeholder:text-[#1A2B4C]/35 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
       />
     </div>
   );
@@ -174,11 +174,12 @@ function renderSection(
   obsIndex: number
 ) {
   return (
-    <div key={section.key}>
-      <h2 className="text-lg font-semibold text-gray-900 mb-3">
-        {titleForSection(section, language)} — OBS {obsIndex + 1}
+    <div key={section.key} className="rounded-2xl border border-[#E5E8EB] bg-white p-5 shadow-sm">
+      <h2 className="mb-4 font-montserrat text-lg font-bold text-[#1A2B4C]">
+        {titleForSection(section, language)}{' '}
+        <span className="font-normal text-[#00C1B2]">— OBS {obsIndex + 1}</span>
       </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {section.fields.map((field) => renderField(field, language, obs, onChange))}
       </div>
     </div>

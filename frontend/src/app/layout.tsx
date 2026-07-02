@@ -1,12 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Montserrat } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
 import { AppProviders } from '@/components/providers/AppProviders';
 import { AdSenseScript } from '@/components/ads';
 import { siteUrl, siteName } from '@/lib/site';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const montserrat = Montserrat({
+  subsets: ['latin'],
+  variable: '--font-montserrat',
+  weight: ['600', '700', '800'],
+});
 const defaultTitle = 'Gradion — Platform ABA & Pendampingan Autisme untuk Keluarga Indonesia';
 const defaultDescription =
   'Gradion (evolusi Langkah Kecil) mendukung anak dengan ASD melalui mesin ABA terstruktur, kolaborasi terapis & konsultan, validasi video berbasis AI, Knowledge Hub, dan analytics. Recovery is possible.';
@@ -117,7 +122,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.className} ${montserrat.variable}`}>
         {/* Google Analytics */}
         {gaId && (
           <>

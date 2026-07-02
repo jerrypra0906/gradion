@@ -99,6 +99,17 @@ export interface ApiResponse<T = unknown> {
   };
 }
 
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const apiError = error.response?.data as { error?: string; message?: string } | undefined;
+    return apiError?.error || apiError?.message || error.message || fallback;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -121,6 +132,8 @@ export interface Child {
   diagnosis?: string;
   monthly_quota: number;
   used_sessions: number;
+  /** Sum of executed ABA program durations for the current calendar week (hours). */
+  weekly_hours_executed?: number;
   created_at: string;
   behaviors?: string | null;
   concerns?: string | null;
@@ -199,6 +212,9 @@ export interface Session {
 export interface SkillRating {
   name: string;
   rating: number;
+  target?: string;
+  trial_data?: string;
+  domain?: string;
 }
 
 export interface ParentLog {
@@ -217,6 +233,7 @@ export interface ParentLog {
   ai_summary?: string;
   therapist_comment?: string;
   status: 'pending' | 'approved' | 'flagged';
+  aba_session_id?: number | null;
   created_at: string;
   updated_at: string;
   child?: {
@@ -360,15 +377,21 @@ export interface ChildReportData {
     status: Goal['status'];
     count: number;
   }[];
-  recentLogs: Array<{
-    id: number;
-    log_date: string;
-    rating: number;
-    status: ParentLog['status'];
-    skills_practiced: SkillRating[];
-    activities: string;
-    therapist_comment?: string | null;
-  }>;
+  recentLogs: Array<
+    Pick<
+      ParentLog,
+      | 'id'
+      | 'log_date'
+      | 'rating'
+      | 'skills_practiced'
+      | 'activities'
+      | 'therapist_comment'
+      | 'duration_hours'
+      | 'aba_session_id'
+      | 'creator_role'
+      | 'creator'
+    >
+  >;
   lastLogDate?: string | null;
 }
 

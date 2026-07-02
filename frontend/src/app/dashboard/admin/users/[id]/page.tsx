@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { apiClient, User, Subscription, AITokenWallet, ApiResponse } from '@/lib/api';
+import { apiClient, ApiResponse, getApiErrorMessage, User, Subscription, AITokenWallet } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -26,6 +26,8 @@ export default function UserDetailPage() {
   const [monthlyLogQuota, setMonthlyLogQuota] = useState<number>(30);
   const [endDate, setEndDate] = useState<string>('');
   const [planConfigs, setPlanConfigs] = useState<Record<string, { weeks: number }>>({});
+  const [selectedRole, setSelectedRole] = useState<User['role']>('parent');
+  const [savingRole, setSavingRole] = useState(false);
 
   useEffect(() => {
     if (user && user.role === 'admin' && userId) {
@@ -84,66 +86,105 @@ export default function UserDetailPage() {
     }
   };
 
+  const fetchSubscription = async () => {
+    try {
+      const subResponse = await apiClient.get<ApiResponse<{
+        subscription: Subscription | null;
+        aiWallet: AITokenWallet | null;
+        planConfig: unknown;
+      }>>(`/subscriptions/user/${userId}`);
+
+      if (subResponse.data.success && subResponse.data.data) {
+        const sub = subResponse.data.data.subscription;
+        const aiWallet = subResponse.data.data.aiWallet;
+
+        setUserData((prev) =>
+          prev
+            ? {
+                ...prev,
+                subscription: sub,
+                aiTokenWallet: aiWallet,
+              }
+            : prev
+        );
+
+        if (sub) {
+          setPlanType(sub.plan_type);
+          setStatus(sub.status);
+          setMonthlyLogQuota(sub.monthly_log_quota || 30);
+          if (Object.keys(planConfigs).length > 0) {
+            setEndDate(calculateEndDate(sub.plan_type));
+          } else if (sub.end_date) {
+            setEndDate(sub.end_date.split('T')[0]);
+          }
+        }
+      }
+    } catch {
+      // Subscription not found is okay - user might not have one
+    }
+  };
+
   const fetchUser = async () => {
     try {
       setLoading(true);
-      // Fetch subscription info
-      let sub = null;
-      let aiWallet = null;
-      try {
-        const subResponse = await apiClient.get<ApiResponse<{
-          subscription: Subscription | null;
-          aiWallet: AITokenWallet | null;
-          planConfig: any;
-        }>>(`/subscriptions/user/${userId}`);
-        
-        if (subResponse.data.success && subResponse.data.data) {
-          sub = subResponse.data.data.subscription;
-          aiWallet = subResponse.data.data.aiWallet;
-        }
-      } catch (err) {
-        // Subscription not found is okay - user might not have one
-        console.log('No subscription found for user:', userId);
-      }
-      
-      // Fetch user details
-      const userResponse = await apiClient.get<ApiResponse<UserWithSubscription[]>>(
-        `/admin/users?search=${userId}&limit=1`
+
+      const userResponse = await apiClient.get<ApiResponse<UserWithSubscription>>(
+        `/admin/users/${userId}`
       );
-      
-      if (userResponse.data.success && userResponse.data.data && userResponse.data.data[0]) {
-        const user = userResponse.data.data[0];
-        
-        setUserData({
-          ...user,
-          subscription: sub || user.subscription || null,
-          aiTokenWallet: aiWallet || user.aiTokenWallet || null,
-        });
-        
-        const subscription = sub || user.subscription;
+
+      if (userResponse.data.success && userResponse.data.data) {
+        const loadedUser = userResponse.data.data;
+
+        setUserData((prev) => ({
+          ...loadedUser,
+          subscription: prev?.subscription ?? loadedUser.subscription ?? null,
+          aiTokenWallet: prev?.aiTokenWallet ?? loadedUser.aiTokenWallet ?? null,
+        }));
+        setSelectedRole(loadedUser.role);
+
+        const subscription = loadedUser.subscription;
         if (subscription) {
           setPlanType(subscription.plan_type);
           setStatus(subscription.status);
-          // monthly_log_quota might not exist, use default or from plan config
           setMonthlyLogQuota(subscription.monthly_log_quota || 30);
-          // Calculate end date based on current plan type from current date
           if (Object.keys(planConfigs).length > 0) {
             setEndDate(calculateEndDate(subscription.plan_type));
           } else if (subscription.end_date) {
-            // Fallback to existing end date if plan configs not loaded yet
             setEndDate(subscription.end_date.split('T')[0]);
           }
-        } else {
-          // New subscription - calculate end date for default plan
-          if (Object.keys(planConfigs).length > 0) {
-            setEndDate(calculateEndDate(planType));
-          }
+        } else if (Object.keys(planConfigs).length > 0) {
+          setEndDate(calculateEndDate(planType));
         }
       }
+
+      await fetchSubscription();
     } catch (error) {
       console.error('Failed to fetch user:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveRole = async () => {
+    if (!userData || selectedRole === userData.role) return;
+
+    try {
+      setSavingRole(true);
+      const response = await apiClient.put<ApiResponse<User>>(`/admin/users/${userId}`, {
+        role: selectedRole,
+      });
+      if (response.data.success && response.data.data) {
+        const updatedRole = response.data.data.role;
+        setUserData((prev) => (prev ? { ...prev, role: updatedRole } : prev));
+        setSelectedRole(updatedRole);
+        alert('User role updated successfully!');
+      } else {
+        alert(response.data.error || 'Failed to update role');
+      }
+    } catch (error: unknown) {
+      alert(getApiErrorMessage(error, 'Failed to update role'));
+    } finally {
+      setSavingRole(false);
     }
   };
 
@@ -187,7 +228,7 @@ export default function UserDetailPage() {
           end_date: endDateDatetime, // Always send end date (mandatory) as datetime string
         });
       }
-      await fetchUser();
+      await fetchSubscription();
       alert('Subscription updated successfully!');
     } catch (error: any) {
       console.error('Failed to update subscription:', error);
@@ -230,6 +271,32 @@ export default function UserDetailPage() {
           </Button>
           <h1 className="text-3xl font-bold text-gray-900 mt-4">Manage User: {userData.name}</h1>
           <p className="mt-2 text-gray-600">{userData.email}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            Saved role:{' '}
+            <span className="font-medium capitalize text-gray-800">{userData.role}</span>
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="sm:w-56">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+              <select
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value as User['role'])}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="parent">Parent</option>
+                <option value="therapist">Therapist</option>
+                <option value="consultant">Consultant</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <Button
+              onClick={handleSaveRole}
+              disabled={savingRole || selectedRole === userData.role}
+              variant="outline"
+            >
+              {savingRole ? 'Saving role...' : 'Save Role'}
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

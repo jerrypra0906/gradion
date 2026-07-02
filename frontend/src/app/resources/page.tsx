@@ -6,6 +6,7 @@ import Script from 'next/script';
 import { Button } from '@/components/ui/Button';
 import { Footer } from '@/components/layout/Footer';
 import { apiClient, ApiResponse, CMSContent } from '@/lib/api';
+import { LANDING_SECTION_SLUGS } from '@/lib/landingCms';
 import DOMPurify from 'isomorphic-dompurify';
 import { useAuthStore } from '@/store/authStore';
 import { ResponsiveAd } from '@/components/ads';
@@ -24,7 +25,13 @@ export default function ResourcesPage() {
     try {
       setLoading(true);
       // Fetch all published CMS content, excluding landing page sections and legal pages
-      const excludeSlugs = ['hero', 'vision-mission', 'features', 'why-different', 'success-stories', 'faq', 'contact', 'privacy', 'terms'];
+      const excludeSlugs = [
+        ...LANDING_SECTION_SLUGS,
+        'vision-mission',
+        'contact',
+        'privacy',
+        'terms',
+      ];
       const response = await apiClient.get<ApiResponse<CMSContent[]>>('/cms?limit=50');
       
       if (response.data.success && response.data.data) {

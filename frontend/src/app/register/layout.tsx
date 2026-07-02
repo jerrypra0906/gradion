@@ -2,11 +2,11 @@ import type { Metadata } from 'next';
 import { siteUrl, siteName } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Create Account',
-  description: `Create your free ${siteName} account — structured ABA support, collaboration, and Knowledge Hub. Start with a free plan and upgrade anytime.`,
+  title: 'Daftar',
+  description: `Buat akun ${siteName} gratis — dukungan ABA terstruktur, kolaborasi, dan Knowledge Hub. Mulai dengan paket gratis kapan saja.`,
   openGraph: {
-    title: `Create Account | ${siteName}`,
-    description: `Create your free ${siteName} account to get started.`,
+    title: `Daftar | ${siteName}`,
+    description: `Buat akun ${siteName} gratis untuk memulai.`,
     url: `${siteUrl}/register`,
   },
   robots: {

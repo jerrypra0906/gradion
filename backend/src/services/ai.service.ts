@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
-import { getPlanConfig } from '../lib/subscription.js';
+import { getPlanConfig, expireTrialIfNeeded, getTrialTokenLimit } from '../lib/subscription.js';
 import type { SubscriptionPlan } from '@prisma/client';
 
 let openaiClient: OpenAI | null = null;
@@ -416,7 +416,7 @@ export async function hasAIAccess(userId: number): Promise<{
 }> {
   try {
     // Get user's subscription
-    const subscription = await prisma.subscription.findUnique({
+    let subscription = await prisma.subscription.findUnique({
       where: { user_id: userId },
     });
 
@@ -424,16 +424,30 @@ export async function hasAIAccess(userId: number): Promise<{
       return { hasAccess: false, reason: 'No subscription found' };
     }
 
-    // Trial always has AI access
+    subscription = await expireTrialIfNeeded(subscription);
+
+    // Trial has AI access for Initial Observation + Weekly ABA during the trial window
     if (subscription.status === 'trial') {
-      const planConfig = await getPlanConfig(subscription.plan_type);
+      const now = new Date();
+      if (subscription.end_date && subscription.end_date < now) {
+        return {
+          hasAccess: false,
+          reason:
+            'Your free trial has ended. Upgrade to Pro or Premium to continue using AI features.',
+          subscription: {
+            plan_type: subscription.plan_type,
+            status: subscription.status,
+          },
+        };
+      }
+
       return {
         hasAccess: true,
         subscription: {
           plan_type: subscription.plan_type,
           status: subscription.status,
         },
-        planConfig,
+        planConfig: { aiAccess: true },
       };
     }
 
@@ -516,22 +530,34 @@ export async function checkTokenQuota(
 
       const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
       const planConfig = await getPlanConfig(planType);
-      const renewalDate = new Date();
-      renewalDate.setMonth(renewalDate.getMonth() + 1);
+      const isTrial = subscription?.status === 'trial';
+      const renewalDate =
+        isTrial && subscription?.end_date
+          ? subscription.end_date
+          : (() => {
+              const d = new Date();
+              d.setMonth(d.getMonth() + 1);
+              return d;
+            })();
 
       wallet = await prisma.aITokenWallet.create({
         data: {
           user_id: userId,
           plan_type: planType,
-          monthly_token_limit: planConfig.monthlyTokenLimit,
+          monthly_token_limit: isTrial ? getTrialTokenLimit() : planConfig.monthlyTokenLimit,
           renewal_date: renewalDate,
         },
       });
     }
 
-    // Check if renewal is needed
+    const subscription = await prisma.subscription.findUnique({
+      where: { user_id: userId },
+    });
+    const isTrial = subscription?.status === 'trial';
+
+    // Check if renewal is needed (trial uses a fixed pool until end_date — no monthly reset)
     const now = new Date();
-    if (wallet.renewal_date <= now) {
+    if (!isTrial && wallet.renewal_date <= now) {
       const subscription = await prisma.subscription.findUnique({
         where: { user_id: userId },
       });

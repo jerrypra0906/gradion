@@ -2,11 +2,11 @@ import type { Metadata } from 'next';
 import { siteUrl, siteName } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: 'Sign In',
-  description: `Sign in to your ${siteName} account to track progress, collaborate with therapists and consultants, and use AI-assisted tools.`,
+  title: 'Masuk',
+  description: `Masuk ke akun ${siteName} Anda untuk melacak perkembangan, berkolaborasi dengan terapis, dan menggunakan fitur berbasis AI.`,
   openGraph: {
-    title: `Sign In | ${siteName}`,
-    description: `Sign in to your ${siteName} account.`,
+    title: `Masuk | ${siteName}`,
+    description: `Masuk ke akun ${siteName} Anda.`,
     url: `${siteUrl}/login`,
   },
   robots: {

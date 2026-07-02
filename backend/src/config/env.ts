@@ -53,6 +53,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: optionalString,
   // Use a known-stable Anthropic model id (avoid "-latest" which may not exist on all accounts)
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
+  FREE_TRIAL_WEEKS: z.coerce.number().default(2),
   AI_TOKEN_LIMIT_FREE_TRIAL: z.coerce.number().default(2000),
   AI_TOKEN_LIMIT_BASIC: z.coerce.number().default(10000),
   AI_TOKEN_LIMIT_PREMIUM: z.coerce.number().default(30000),
@@ -235,6 +236,9 @@ export const config = {
     registrationWindowMinutes: parsedEnv.data.REGISTRATION_WINDOW_MINUTES,
     loginMaxAttempts: parsedEnv.data.AUTH_LOGIN_MAX_ATTEMPTS,
     loginWindowMs: parsedEnv.data.AUTH_LOGIN_WINDOW_MS,
+  },
+  subscription: {
+    trialWeeks: parsedEnv.data.FREE_TRIAL_WEEKS,
   },
   features: {
     ai: parsedEnv.data.ENABLE_AI_FEATURES,

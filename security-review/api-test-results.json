@@ -1,0 +1,74 @@
+﻿[
+    {
+        "test":  "GET /health",
+        "res":  {
+                    "ok":  true,
+                    "body":  "{\"status\":\"ok\",\"timestamp\":\"2026-07-02T08:05:16.088Z\",\"uptime\":9383.546018273,\"environment\":\"production\",\"version\":\"1.0.0\"}",
+                    "status":  200
+                }
+    },
+    {
+        "test":  "GET /cms/hero (public)",
+        "res":  {
+                    "ok":  true,
+                    "body":  "{\"success\":true,\"data\":{\"id\":2,\"title\":\"Hero Section\",\"slug\":\"hero\",\"content_html\":\"{\\n  \\\"version\\\": 1,\\n  \\\"section\\\": \\\"hero\\\",\\n  \\\"data\\\": {\\n    \\\"badge\\\": \\\"Platform ABA No. 1 di Indonesia\\\",\\n    \\\"headline\\\": \\\"Recovery is\\\",\\n    \\\"headlineHighlight\\\": \\\"possible.\\\",\\n    \\\"subtitle\\\": \\\"Platform ABA berintensitas tinggi untuk keluarga di Indonesia — pelacakan perilaku, kolaborasi terapis \u0026 konsultan, validasi sesi rumah dengan AI, dan ringkasan perkembangan.\\\",\\n    \\\"primaryCta\\\": {\\n      \\\"label\\\": \\\"Mulai Gratis Sekarang\\\",\\n      \\\"href\\\": \\\"/register\\\"\\n    },\\n    \\\"secondaryCta\\\": {\\n      \\\"label\\\": \\\"Lihat Demo\\\",\\n      \\\"href\\\": \\\"/#features\\\"\\n    },\\n    \\\"trustBadges\\\": [\\n      {\\n        \\\"label\\\": \\\"Berbasis ABA\\\",\\n        \\\"sub\\\": \\\"Protokol klinis\\\"\\n      },\\n      {\\n        \\\"label\\\": \\\"Kolaborasi\\\",\\n        \\\"sub\\\": \\\"Orang tua \u0026 terapis\\\"\\n      },\\n      {\\n        \\\"label\\\": \\\"AI \u0026 Laporan\\\",\\n        \\\"sub\\\": \\\"Insight berbasis data\\\"\\n      }\\n    ]\\n  }\\n}\",\"status\":\"published\",\"publish_at\":null,\"unpublish_at\":null,\"banner_id\":null,\"created_at\":\"2026-07-02T04:46:15.835Z\",\"updated_at\":\"2026-07-02T04:46:15.835Z\"}}",
+                    "status":  200
+                }
+    },
+    {
+        "test":  "POST /auth/login invalid password",
+        "res":  {
+                    "ok":  false,
+                    "body":  "",
+                    "status":  401
+                }
+    },
+    {
+        "test":  "GET /admin/users without token",
+        "res":  {
+                    "ok":  false,
+                    "body":  "",
+                    "status":  401
+                }
+    },
+    {
+        "test":  "POST /admin/users create verified parent",
+        "res":  {
+                    "ok":  true,
+                    "body":  "{\"success\":true,\"data\":{\"id\":17,\"name\":\"SecTest 1389825370\",\"email\":\"sectest_verified1389825370@gradion.id\",\"role\":\"parent\",\"created_at\":\"2026-07-02T08:05:18.730Z\",\"is_email_verified\":true}}",
+                    "status":  201
+                }
+    },
+    {
+        "test":  "GET /admin/users as parent (should 403)",
+        "res":  {
+                    "ok":  false,
+                    "body":  "",
+                    "status":  403
+                }
+    },
+    {
+        "test":  "GET /admin/users/1 as parent (should 403)",
+        "res":  {
+                    "ok":  false,
+                    "body":  "",
+                    "status":  403
+                }
+    },
+    {
+        "test":  "GET /admin/users?search=%27%20OR%201%3D1-- as admin",
+        "res":  {
+                    "ok":  true,
+                    "body":  "{\"success\":true,\"data\":[],\"pagination\":{\"page\":1,\"limit\":50,\"total\":0,\"total_pages\":0}}",
+                    "status":  200
+                }
+    },
+    {
+        "test":  "POST /auth/login rate limit after many attempts (expect 429)",
+        "res":  {
+                    "ok":  false,
+                    "body":  "",
+                    "status":  429
+                }
+    }
+]

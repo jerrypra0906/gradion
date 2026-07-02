@@ -38,7 +38,7 @@ export function GoogleAuthButton({
     // Check privacy agreement if required
     if (requirePrivacyAgreement && !agreedToPrivacy) {
       setShowPrivacyError(true);
-      setError('You must agree to the Privacy Policy to sign in with Google.');
+      setError('Anda harus menyetujui Kebijakan Privasi untuk masuk dengan Google.');
       return;
     }
 
@@ -70,20 +70,20 @@ export function GoogleAuthButton({
                 setShowPrivacyError(false);
                 setError(null);
               }}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              className="h-4 w-4 rounded border-gradion-grey text-gradion-teal focus:ring-gradion-teal"
             />
           </div>
           <div className="ml-3 text-sm">
-            <label htmlFor="google-privacy-agreement" className="text-gray-700 cursor-pointer">
-              I have read and agree to the{' '}
+            <label htmlFor="google-privacy-agreement" className="text-gradion-navy/70 cursor-pointer text-sm">
+              Saya telah membaca dan menyetujui{' '}
               <Link
                 href="/cms/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-500 font-medium underline"
+                className="font-semibold text-gradion-teal hover:text-gradion-teal-hover underline"
                 onClick={(e) => e.stopPropagation()}
               >
-                Privacy Policy
+                Kebijakan Privasi
               </Link>
             </label>
           </div>

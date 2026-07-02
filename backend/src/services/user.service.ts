@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
+import { provisionNewUserTrialSubscription } from '../lib/subscription.js';
 import { Role } from '../types/index.js';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
@@ -12,6 +13,14 @@ export interface CreateUserInput {
   role: Role;
   phone_number?: string; // Mobile phone number
   referral_code?: string; // Referral code used during registration
+  is_email_verified?: boolean;
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  role?: Role;
+  phone_number?: string | null;
+  is_email_verified?: boolean;
 }
 
 export interface UserResponse {
@@ -30,9 +39,12 @@ export class UserService {
   }
 
   async createUser(input: CreateUserInput): Promise<UserResponse> {
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim();
+
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: input.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -78,14 +90,15 @@ export class UserService {
     // Create user
     const user = await prisma.user.create({
       data: {
-        name: input.name,
-        email: input.email,
+        name,
+        email,
         password_hash,
         role: input.role,
-        phone_number: input.phone_number || null,
+        phone_number: input.phone_number?.trim() || null,
         referral_code: referralCode!,
         referred_by_code: referredByCode,
         points: 0,
+        is_email_verified: input.is_email_verified ?? false,
       },
       select: {
         id: true,
@@ -96,6 +109,13 @@ export class UserService {
         is_email_verified: true,
       },
     });
+
+    try {
+      await provisionNewUserTrialSubscription(user.id);
+    } catch (provisionError) {
+      await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
+      throw provisionError;
+    }
 
     return user;
   }
@@ -138,6 +158,40 @@ export class UserService {
       },
       orderBy: {
         created_at: 'desc',
+      },
+    });
+  }
+
+  async updateUser(id: number, input: UpdateUserInput): Promise<UserResponse> {
+    const existing = await prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      throw new Error('User not found');
+    }
+
+    if (input.role && input.role !== existing.role && existing.role === 'admin') {
+      const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+      if (adminCount <= 1) {
+        throw new Error('Cannot change role of the last admin account');
+      }
+    }
+
+    return prisma.user.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.phone_number !== undefined ? { phone_number: input.phone_number } : {}),
+        ...(input.is_email_verified !== undefined
+          ? { is_email_verified: input.is_email_verified }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        created_at: true,
+        is_email_verified: true,
       },
     });
   }

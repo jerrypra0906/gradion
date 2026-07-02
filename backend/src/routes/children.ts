@@ -7,7 +7,15 @@ import { logger } from '../utils/logger.js';
 import {
   generateInitialAssessmentFromObservation,
   translateInitialAssessmentMarkdownToIndonesian,
+  hasAIAccess,
+  checkTokenQuota,
+  updateTokenUsage,
 } from '../services/ai.service.js';
+import { ensureFirstAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
+import {
+  computeWeeklyExecutedHours,
+  syncMissingParentLogsForChild,
+} from '../services/parentLogFromAba.service.js';
 import { config } from '../config/env.js';
 
 const createChildSchema = z.object({
@@ -35,6 +43,38 @@ const linkTherapistSchema = z.object({
 
 function isAssignedStaff(role: string) {
   return role === 'therapist' || role === 'consultant';
+}
+
+const INITIAL_ASSESSMENT_TOKEN_ESTIMATE = 900;
+
+async function assertInitialAssessmentAICapability(
+  userId: number
+): Promise<{ ok: true } | { ok: false; code: number; error: string }> {
+  if (!config.features.ai) {
+    return { ok: false, code: 503, error: 'AI features are disabled' };
+  }
+
+  const access = await hasAIAccess(userId);
+  if (!access.hasAccess) {
+    return {
+      ok: false,
+      code: 403,
+      error:
+        access.reason ||
+        'AI features require an active subscription or free trial. Upgrade to continue.',
+    };
+  }
+
+  const quota = await checkTokenQuota(userId, INITIAL_ASSESSMENT_TOKEN_ESTIMATE);
+  if (!quota.hasQuota) {
+    return {
+      ok: false,
+      code: 403,
+      error: quota.reason || 'Insufficient AI tokens for Initial Observation report.',
+    };
+  }
+
+  return { ok: true };
 }
 
 export async function childrenRoutes(
@@ -223,11 +263,15 @@ export async function childrenRoutes(
           }
         : { ...child, has_pending_assessment: false };
 
+      await syncMissingParentLogsForChild(childId);
+      const weekly_hours_executed = await computeWeeklyExecutedHours(childId);
+
       return {
         success: true,
         data: {
           ...gatedChild,
           therapists,
+          weekly_hours_executed,
         },
       };
     }
@@ -292,6 +336,13 @@ export async function childrenRoutes(
 
       logger.info({ childId, lang, mode }, 'Initial assessment request');
 
+      const billingUserId = user.role === 'parent' ? user.id : child.parent_id;
+      const aiGate = await assertInitialAssessmentAICapability(billingUserId);
+      if (!aiGate.ok) {
+        reply.code(aiGate.code);
+        return { success: false, error: aiGate.error };
+      }
+
       const result =
         lang === 'id' && mode === 'translate'
           ? child.initial_assessment_report
@@ -321,6 +372,8 @@ export async function childrenRoutes(
         };
       }
 
+      await updateTokenUsage(billingUserId, result.tokensUsed);
+
       const updated = await prisma.child.update({
         where: { id: childId },
         data: {
@@ -347,6 +400,14 @@ export async function childrenRoutes(
               has_pending_assessment: true,
             }
           : updated;
+
+      if (mode === 'generate') {
+        await ensureFirstAbaWeekForChild({
+          childId,
+          userId: billingUserId,
+          lang,
+        });
+      }
 
       return {
         success: true,
@@ -394,9 +455,16 @@ export async function childrenRoutes(
         },
       });
 
-      // Auto-generate Initial Assessment report when observation exists and Claude is configured.
-      if (child.initial_observation && config.ai.anthropicApiKey) {
+      // Auto-generate Initial Assessment report when observation exists and AI is available.
+      if (child.initial_observation && config.features.ai) {
         try {
+          const aiGate = await assertInitialAssessmentAICapability(parentId);
+          if (!aiGate.ok) {
+            logger.info(
+              { childId: child.id, parentId, reason: aiGate.error },
+              'Skipped auto-generate initial assessment — no AI access'
+            );
+          } else {
           const lang = body.lang ?? 'en';
           const result = await generateInitialAssessmentFromObservation({
             childName: child.name,
@@ -405,15 +473,29 @@ export async function childrenRoutes(
             language: lang,
           });
           if (result?.reportMarkdown) {
+            await updateTokenUsage(parentId, result.tokensUsed);
             await prisma.child.update({
               where: { id: child.id },
               data:
                 lang === 'id'
-                  ? { initial_assessment_report_id: result.reportMarkdown }
-                  : { initial_assessment_report: result.reportMarkdown },
+                  ? {
+                      initial_assessment_report_id: result.reportMarkdown,
+                      assessment_review_status: 'pending',
+                    }
+                  : {
+                      initial_assessment_report: result.reportMarkdown,
+                      assessment_review_status: 'pending',
+                    },
             });
             if (lang === 'id') (child as any).initial_assessment_report_id = result.reportMarkdown;
             else (child as any).initial_assessment_report = result.reportMarkdown;
+
+            await ensureFirstAbaWeekForChild({
+              childId: child.id,
+              userId: parentId,
+              lang,
+            });
+          }
           }
         } catch (error: any) {
           logger.warn(

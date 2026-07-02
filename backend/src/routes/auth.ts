@@ -10,6 +10,7 @@ import { PasswordResetService } from '../services/passwordReset.service.js';
 import { RegistrationAttemptService } from '../services/registrationAttempt.service.js';
 import { formatErrorMessage } from '../utils/errorResponse.js';
 import { prisma } from '../lib/prisma.js';
+import { provisionNewUserTrialSubscription } from '../lib/subscription.js';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger.js';
 
@@ -381,6 +382,7 @@ export async function authRoutes(
             google_id: payload.sub,
           },
         });
+        await provisionNewUserTrialSubscription(user.id);
       } else {
         const updates: Record<string, unknown> = {};
         if (!user.google_id) {

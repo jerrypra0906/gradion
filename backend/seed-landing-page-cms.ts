@@ -1,239 +1,292 @@
-import { prisma } from './src/lib/prisma.js';
+import { prisma } from './dist/lib/prisma.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
+const LANDING_CMS_VERSION = 1;
+
+function serializeSection(slug: string, data: unknown) {
+  return JSON.stringify({ version: LANDING_CMS_VERSION, section: slug, data }, null, 2);
+}
+
 const landingPageSections = [
+  {
+    slug: 'landing-nav',
+    title: 'Navigation',
+    data: {
+      links: [
+        { href: '/#features', label: 'Fitur' },
+        { href: '/#pricing', label: 'Harga' },
+        { href: '/resources', label: 'Knowledge Hub' },
+      ],
+      loginLabel: 'Masuk',
+      registerLabel: 'Daftar Gratis',
+      mobileRegisterLabel: 'Daftar',
+    },
+  },
   {
     slug: 'hero',
     title: 'Hero Section',
-    content_html: `
-      <div class="text-center">
-        <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 mb-6">
-          Track Every <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Langkah Kecil</span>
-        </h1>
-        <p class="text-xl md:text-2xl text-gray-700 mb-4 max-w-3xl mx-auto">
-          Your child's autism progress, beautifully organized
-        </p>
-        <p class="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-          Collaborate with therapists, track daily activities, and celebrate every small step forward. Built for parents who want to be part of their child's journey.
-        </p>
-      </div>
-    `,
+    data: {
+      badge: 'Platform ABA No. 1 di Indonesia',
+      headline: 'Recovery is',
+      headlineHighlight: 'possible.',
+      subtitle:
+        'Platform ABA berintensitas tinggi untuk keluarga di Indonesia — pelacakan perilaku, kolaborasi terapis & konsultan, validasi sesi rumah dengan AI, dan ringkasan perkembangan.',
+      primaryCta: { label: 'Mulai Gratis Sekarang', href: '/register' },
+      secondaryCta: { label: 'Lihat Demo', href: '/#features' },
+      trustBadges: [
+        { label: 'Berbasis ABA', sub: 'Protokol klinis' },
+        { label: 'Kolaborasi', sub: 'Orang tua & terapis' },
+        { label: 'AI & Laporan', sub: 'Insight berbasis data' },
+      ],
+    },
   },
   {
     slug: 'features',
     title: 'Features Section',
-    content_html: `
-      <div class="text-center mb-16">
-        <h2 class="text-4xl font-bold text-gray-900 mb-4">Everything You Need</h2>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-          A comprehensive platform designed to support your child's development journey
-        </p>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Daily Progress Tracking</h3>
-          <p class="text-gray-600">
-            Log daily activities, skills practiced, and milestones. See your child's progress over time with beautiful visualizations.
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Therapist Collaboration</h3>
-          <p class="text-gray-600">
-            Connect with your child's therapists. Share progress, review sessions, and work together towards common goals.
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Progress Reports</h3>
-          <p class="text-gray-600">
-            Generate comprehensive reports showing trends, improvements, and areas for focus. Share with therapists and family members.
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-yellow-50 to-orange-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">AI-Powered Insights</h3>
-          <p class="text-gray-600">
-            Get intelligent summaries of your child's progress. AI analyzes patterns and suggests areas to focus on.
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-indigo-50 to-blue-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Goal Management</h3>
-          <p class="text-gray-600">
-            Set and track therapy goals with your therapist. Monitor progress and celebrate achievements together.
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-red-50 to-rose-50 p-8 rounded-xl shadow-lg">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Secure & Private</h3>
-          <p class="text-gray-600">
-            Your child's data is encrypted and secure. We follow strict privacy guidelines to protect your family's information.
-          </p>
-        </div>
-      </div>
-    `,
+    data: {
+      title: 'Semua yang Anda butuhkan dalam satu platform',
+      subtitle:
+        'Platform lengkap untuk melacak dan mendukung perkembangan anak dengan autisme',
+      features: [
+        {
+          title: 'Pelacakan ABA',
+          description:
+            'Catat perilaku, tujuan, dan sesi dengan protokol ABA yang jelas setiap hari.',
+        },
+        {
+          title: 'Terapis & Komunitas',
+          description:
+            'Kolaborasi dengan terapis dan konsultan ABA dalam satu alur kerja terstruktur.',
+        },
+        {
+          title: 'Ringkasan AI',
+          description:
+            'Insight perkembangan berbasis data dan ringkasan AI sesuai paket langganan.',
+        },
+        {
+          title: 'Knowledge Hub',
+          description:
+            'Akses artikel edukatif dan sumber daya untuk mendukung perjalanan keluarga.',
+        },
+        {
+          title: 'Layanan Lisensi',
+          description:
+            'Keamanan data, privasi anak, dan kontrol akses sebagai fondasi platform.',
+        },
+        {
+          title: 'Jadwal & Pengingat',
+          description:
+            'Kelola sesi terapi, pengingat, dan aktivitas harian tanpa ketinggalan.',
+        },
+      ],
+    },
   },
   {
     slug: 'why-different',
-    title: 'Why Different Section',
-    content_html: `
-      <div class="text-center mb-16">
-        <h2 class="text-4xl font-bold text-gray-900 mb-4">Why LangkahKecil is Different</h2>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-          Built specifically for autism families, by people who understand your journey
-        </p>
-      </div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-        <div>
-          <div class="space-y-6">
-            <div class="flex items-start space-x-4">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">Designed for Real Families</h3>
-                <p class="text-gray-600">
-                  We've worked with parents and therapists to create a tool that fits into your daily life, not the other way around.
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start space-x-4">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">Every Small Step Matters</h3>
-                <p class="text-gray-600">
-                  We celebrate every "langkah kecil" (small step). Progress isn't always linear, and we help you see the wins along the way.
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start space-x-4">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">Seamless Collaboration</h3>
-                <p class="text-gray-600">
-                  Parents and therapists work together in one place. No more scattered notes or missed updates.
-                </p>
-              </div>
-            </div>
-            <div class="flex items-start space-x-4">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-xl font-semibold text-gray-900 mb-2">Affordable & Accessible</h3>
-                <p class="text-gray-600">
-                  Start with a free plan. Upgrade when you're ready. No long-term commitments or hidden fees.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `,
+    title: 'Family Values Section',
+    data: {
+      title: 'Bukan hanya Anda & buah hati',
+      subtitle:
+        'Gradion hadir untuk mendukung perjalanan keluarga dengan pendekatan ABA yang hangat dan terstruktur.',
+      cards: [
+        {
+          title: 'Anda tidak sendirian',
+          description:
+            'Setiap keluarga memiliki perjalanan unik. Gradion memberikan alat dan dukungan agar Anda merasa didampingi di setiap langkah.',
+        },
+        {
+          title: 'Setiap kemajuan berarti',
+          description:
+            'Rayakan momen kecil — dari sesi terapi rumah hingga pencapaian tujuan klinis yang terukur.',
+        },
+        {
+          title: 'Kolaborasi yang bermakna',
+          description:
+            'Orang tua, terapis, dan konsultan ABA bekerja bersama dengan visibilitas kemajuan yang sama.',
+        },
+      ],
+    },
+  },
+  {
+    slug: 'pricing',
+    title: 'Pricing Section',
+    data: {
+      title: 'Pilih paket yang tepat untuk Anda',
+      subtitle: 'Mulai gratis, lalu tingkatkan saat Anda siap untuk fitur lengkap',
+      plans: [
+        {
+          id: 'free',
+          subscriptionKey: 'free',
+          name: 'Gratis',
+          tagline: 'Untuk memulai',
+          price: 0,
+          periodLabel: '',
+          features: ['Pelacakan dasar', 'Kolaborasi terapis', 'Laporan dasar'],
+          ctaLabel: 'Mulai Gratis',
+          style: 'light',
+          highlighted: false,
+        },
+        {
+          id: 'pro',
+          subscriptionKey: 'pro',
+          name: 'Pro',
+          tagline: 'Paling banyak dipilih',
+          badge: 'Populer',
+          price: 0,
+          periodLabel: '',
+          features: [
+            'Semua fitur Gratis',
+            'AI Summary ({{monthlyTokenLimit}} token/bulan)',
+            'Laporan lanjutan',
+          ],
+          ctaLabel: 'Pilih Paket',
+          ctaLabelAuthenticated: 'Upgrade ke Pro',
+          checkoutPlan: 'pro',
+          style: 'dark',
+          highlighted: true,
+        },
+        {
+          id: 'premium',
+          subscriptionKey: 'premium',
+          name: 'Premium',
+          tagline: 'Untuk kebutuhan lengkap',
+          price: 0,
+          periodLabel: '',
+          features: [
+            'Semua fitur Pro',
+            'AI Summary ({{monthlyTokenLimit}} token/bulan)',
+            'Prioritas support',
+          ],
+          ctaLabel: 'Hubungi Kami',
+          ctaLabelAuthenticated: 'Upgrade ke Premium',
+          checkoutPlan: 'premium',
+          style: 'dark',
+          highlighted: false,
+        },
+      ],
+    },
+  },
+  {
+    slug: 'moments-cta',
+    title: 'Moments CTA',
+    data: {
+      title: 'Setiap momen kecil adalah kemenangan besar',
+      body: 'Gradion membantu keluarga melacak, merayakan, dan memahami setiap langkah perkembangan anak — dengan data yang dapat dipertanggungjawabkan secara klinis.',
+    },
   },
   {
     slug: 'success-stories',
-    title: 'Success Stories',
-    content_html: `
-      <div class="text-center mb-16">
-        <h2 class="text-4xl font-bold text-gray-900 mb-4">Success Stories</h2>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-          Real families sharing their journey with LangkahKecil
-        </p>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 p-8 rounded-xl shadow-lg">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg">S</div>
-            <div class="ml-4">
-              <h4 class="font-semibold text-gray-900">Sarah M.</h4>
-              <p class="text-sm text-gray-600">Parent</p>
-            </div>
-          </div>
-          <p class="text-gray-700 italic mb-4">
-            "LangkahKecil has transformed how we track our son's progress. Seeing the data over time helps us celebrate every small win."
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-8 rounded-xl shadow-lg">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">D</div>
-            <div class="ml-4">
-              <h4 class="font-semibold text-gray-900">Dr. Ahmad R.</h4>
-              <p class="text-sm text-gray-600">Therapist</p>
-            </div>
-          </div>
-          <p class="text-gray-700 italic mb-4">
-            "The collaboration features make it so easy to stay connected with parents. I can see their daily logs and provide better guidance."
-          </p>
-        </div>
-        <div class="bg-gradient-to-br from-green-50 to-emerald-50 p-8 rounded-xl shadow-lg">
-          <div class="flex items-center mb-4">
-            <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white font-bold text-lg">L</div>
-            <div class="ml-4">
-              <h4 class="font-semibold text-gray-900">Lisa K.</h4>
-              <p class="text-sm text-gray-600">Parent</p>
-            </div>
-          </div>
-          <p class="text-gray-700 italic mb-4">
-            "The AI summaries help me understand patterns I might have missed. It's like having an extra pair of eyes on our journey."
-          </p>
-        </div>
-      </div>
-    `,
+    title: 'Testimonials',
+    data: {
+      title: 'Kisah dari keluarga nyata',
+      testimonials: [
+        {
+          quote:
+            'Dengan Gradion, saya bisa melihat perkembangan anak saya setiap hari. Sangat membantu untuk komunikasi dengan terapis.',
+          author: 'Ibu dari anak berusia 5 tahun',
+        },
+        {
+          quote:
+            'Platform ini memudahkan saya sebagai terapis untuk melihat apa yang dilakukan orang tua di rumah dan memberikan umpan balik.',
+          author: 'Terapis di Jakarta',
+        },
+        {
+          quote:
+            'Validasi video dan ringkasan AI membantu kami memastikan terapi rumah berjalan sesuai protokol.',
+          author: 'Konsultan ABA',
+        },
+      ],
+    },
   },
   {
     slug: 'faq',
     title: 'FAQ Section',
-    content_html: `
-      <div class="text-center mb-16">
-        <h2 class="text-4xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
-        <p class="text-xl text-gray-600 max-w-2xl mx-auto">
-          Everything you need to know about LangkahKecil
-        </p>
-      </div>
-      <div class="max-w-3xl mx-auto space-y-6">
-        <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">What is LangkahKecil?</h3>
-          <p class="text-gray-600">
-            LangkahKecil is a comprehensive platform designed to help parents track their child's autism progress. It enables collaboration with therapists, daily activity logging, and progress visualization.
-          </p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Is there a free trial?</h3>
-          <p class="text-gray-600">
-            Yes! We offer a free trial plan that allows you to explore all features. You can upgrade to a paid plan when you're ready for extended access and AI-powered insights.
-          </p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">How does therapist collaboration work?</h3>
-          <p class="text-gray-600">
-            Therapists can be linked to your child's profile. They can view your daily logs, add session notes, set goals, and provide feedback. Everything is synchronized in real-time.
-          </p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Is my data secure?</h3>
-          <p class="text-gray-600">
-            Absolutely. We use industry-standard encryption and follow strict privacy guidelines. Your child's data is never shared with third parties without your explicit consent.
-          </p>
-        </div>
-        <div class="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2">Can I export my data?</h3>
-          <p class="text-gray-600">
-            Yes, you can generate comprehensive reports and export your data at any time. All your progress logs and reports are available for download.
-          </p>
-        </div>
-      </div>
-    `,
+    data: {
+      title: 'Pertanyaan yang sering diajukan',
+      items: [
+        {
+          question: 'Apakah Gradion gratis?',
+          answer:
+            'Ya, kami menyediakan paket gratis dengan fitur dasar. Anda juga bisa upgrade ke paket Pro atau Premium untuk fitur yang lebih lengkap termasuk AI Summary.',
+        },
+        {
+          question: 'Bagaimana cara mengundang terapis?',
+          answer:
+            'Di dashboard, Anda dapat mengundang terapis dengan memasukkan email mereka. Terapis akan menerima email undangan dan dapat mendaftar untuk berkolaborasi dengan Anda.',
+        },
+        {
+          question: 'Apakah data saya aman?',
+          answer:
+            'Ya, kami mengutamakan privasi dan keamanan data. Semua data dienkripsi dan hanya Anda serta terapis yang diundang yang dapat melihat informasi anak Anda.',
+        },
+        {
+          question: 'Bisakah saya menggunakan Gradion di mobile?',
+          answer:
+            'Ya, platform dapat diakses melalui browser mobile dan dirancang responsif untuk pengalaman yang optimal di berbagai perangkat.',
+        },
+      ],
+    },
+  },
+  {
+    slug: 'steps',
+    title: 'Getting Started Steps',
+    data: {
+      title: 'Mulai dalam 3 langkah mudah',
+      subtitle: 'Dari pendaftaran hingga insight perkembangan — semuanya dalam satu platform.',
+      steps: [
+        {
+          title: 'Daftar & buat profil anak',
+          description: 'Mulai gratis dalam hitungan menit — tambahkan profil anak dan tujuan awal.',
+        },
+        {
+          title: 'Catat sesi & kolaborasi',
+          description: 'Log aktivitas ABA harian dan undang terapis untuk berkolaborasi.',
+        },
+        {
+          title: 'Pantau kemajuan dengan AI',
+          description:
+            'Lihat laporan, validasi video, dan ringkasan AI untuk keputusan berbasis data.',
+        },
+      ],
+      cta: { label: 'Mulai Sekarang', href: '/register' },
+    },
+  },
+  {
+    slug: 'footer',
+    title: 'Footer',
+    data: {
+      ctaTitle: 'Siap memulai perjalanan bersama Gradion?',
+      cta: { label: 'Mulai Gratis Sekarang', href: '/register' },
+      tagline: 'Recovery is possible — structured ABA support for families in Indonesia.',
+      linkGroups: [
+        {
+          title: 'Program',
+          links: [
+            { href: '/#features', label: 'Fitur' },
+            { href: '/#pricing', label: 'Harga' },
+            { href: '/resources', label: 'Knowledge Hub' },
+          ],
+        },
+        {
+          title: 'Lebih',
+          links: [
+            { href: '/#faq', label: 'FAQ' },
+            { href: '/cms/contact', label: 'Kontak' },
+            { href: '/login', label: 'Masuk' },
+          ],
+        },
+        {
+          title: 'Legal',
+          links: [
+            { href: '/cms/privacy', label: 'Kebijakan Privasi' },
+            { href: '/cms/terms', label: 'Syarat Layanan' },
+          ],
+        },
+      ],
+      copyright: `© ${new Date().getFullYear()} Gradion. All rights reserved.`,
+    },
   },
 ];
 
@@ -242,29 +295,28 @@ async function main() {
 
   for (const section of landingPageSections) {
     try {
-      // Check if content already exists
+      const content_html = serializeSection(section.slug, section.data);
       const existing = await prisma.cMSContent.findUnique({
         where: { slug: section.slug },
       });
 
       if (existing) {
-        // Update existing content
         await prisma.cMSContent.update({
           where: { slug: section.slug },
           data: {
             title: section.title,
-            content_html: section.content_html.trim(),
+            content_html,
+            status: 'published',
             updated_at: new Date(),
           },
         });
         console.log(`✓ Updated: ${section.title} (${section.slug})`);
       } else {
-        // Create new content
         await prisma.cMSContent.create({
           data: {
             slug: section.slug,
             title: section.title,
-            content_html: section.content_html.trim(),
+            content_html,
             status: 'published',
             updated_at: new Date(),
           },
@@ -287,4 +339,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

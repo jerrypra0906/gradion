@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
-import { getPlanConfig, calculateEndDate } from '../lib/subscription.js';
+import { getPlanConfig, calculateEndDate, provisionNewUserTrialSubscription, getEffectivePlanConfig } from '../lib/subscription.js';
 import { PaymentService } from '../services/payment.service.js';
 import { SubscriptionNotificationService } from '../services/subscriptionNotification.service.js';
 import { logger } from '../utils/logger.js';
@@ -613,37 +613,16 @@ export async function subscriptionsRoutes(
         where: { user_id: user.id },
       });
 
-      // Create default free subscription if none exists
+      // Create default 2-week free trial if none exists (legacy users without subscription)
       if (!subscription) {
-        const freePlanConfig = await getPlanConfig('free');
-        const startDate = new Date();
-        const endDate = calculateEndDate(startDate, freePlanConfig.weeks);
-        subscription = await prisma.subscription.create({
-          data: {
-            user_id: user.id,
-            plan_type: 'free',
-            status: 'active',
-            start_date: startDate,
-            end_date: endDate,
-          },
-        });
-
-        // Create AI token wallet for free plan (no tokens)
-        await prisma.aITokenWallet.create({
-          data: {
-            user_id: user.id,
-            plan_type: 'free',
-            monthly_token_limit: freePlanConfig.monthlyTokenLimit,
-            renewal_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-          },
-        });
+        subscription = await provisionNewUserTrialSubscription(user.id);
       }
 
       const aiWallet = await prisma.aITokenWallet.findUnique({
         where: { user_id: user.id },
       });
 
-      const planConfig = await getPlanConfig(subscription.plan_type);
+      const planConfig = await getEffectivePlanConfig(subscription);
 
       return {
         success: true,
