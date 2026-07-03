@@ -49,8 +49,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-your-session-secret-change-this-in-production-12345678901234567890}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5050}
       CORS_CREDENTIALS: ${CORS_CREDENTIALS:-true}
-      # Email configuration - loaded from env_file (.env.example in dev/staging)
-      # RESEND_API_KEY, RESEND_FROM_EMAIL, RESEND_FROM_NAME are loaded from env_file
+      # Email configuration - loaded from env_file (backend/.env)
+      # Do not add SMTP_* here with ${SMTP_HOST:-} — empty values override env_file.
       EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS: ${EMAIL_VERIFICATION_TOKEN_EXPIRATION_HOURS:-24}
       EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES: ${EMAIL_VERIFICATION_RESEND_INTERVAL_MINUTES:-10}
       # Rate limiting - increased for development

@@ -13,6 +13,11 @@ const SAFE_USER_FACING_PATTERNS = [
   'Password must',
   'Invalid email',
   'String must contain at least',
+  'Email service is not configured',
+  'We could not send',
+  'Invalid or expired reset token',
+  'This reset link has already been used',
+  'Reset link has expired',
 ];
 
 export function getUserFacingError(error: unknown, fallback: string): string {
@@ -63,6 +68,15 @@ export function formatErrorMessage(error: any, fallback: string): string {
   }
 
   return fallback;
+}
+
+export function isEmailServiceError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message;
+  return (
+    message.includes('Email service is not configured') ||
+    message.includes('We could not send')
+  );
 }
 
 export function sendError(

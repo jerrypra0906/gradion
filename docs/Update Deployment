@@ -42,6 +42,74 @@ If you see `502 Bad Gateway`, the frontend container is usually **not running** 
 
 Ensure `frontend/.env.local` exists **before** `docker build` (e.g. `NEXT_PUBLIC_API_URL=https://api.gradion.id/api`).
 
+### 9.3 Email (required for forgot-password & verification)
+
+Password reset and verification emails fail with **400/503** when the backend cannot send mail.
+
+1. On the **backend server**, edit `backend/.env` (not only `.env.example`):
+
+```bash
+# Option A — Resend (verify gradion.id domain in Resend dashboard first)
+RESEND_API_KEY=re_xxxxxxxx
+RESEND_FROM_EMAIL=noreply@gradion.id
+RESEND_FROM_NAME=Gradion
+FRONTEND_URL=https://gradion.id
+
+# Option B — SMTP (e.g. Google Workspace)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_SECURE=false
+# SMTP_USER=noreply@gradion.id
+# SMTP_PASSWORD=app-specific-password
+# SMTP_FROM_EMAIL=noreply@gradion.id
+```
+
+2. Rebuild/restart backend:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --build backend
+```
+
+3. Verify configuration:
+
+```bash
+curl -s https://api.gradion.id/api/health | jq .email
+# Expect: { "configured": true, "provider": "resend" } or "smtp"
+
+curl -s -X POST https://api.gradion.id/api/health/test-email \
+  -H "Content-Type: application/json" \
+  -d '{"to":"your-email@example.com"}'
+```
+
+**Note:** `docker-compose` loads `backend/.env.example` then `backend/.env`. Placeholder `RESEND_API_KEY` values in `.env.example` are ignored when SMTP is set. After editing `backend/.env`, **recreate** the backend container (a simple restart does not reload `env_file`):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --force-recreate backend
+```
+
+**SMTP configured but forgot-password still fails?** On the backend server:
+
+```bash
+# 1) Confirm SMTP vars are inside the running container (not only on disk)
+docker compose exec backend sh -lc 'env | grep -E "^SMTP_" | sed "s/SMTP_PASSWORD=.*/SMTP_PASSWORD=***hidden***/"'
+
+# 2) Tail logs, then trigger forgot-password from the browser
+docker compose logs backend -f --tail 50
+
+# 3) Test send (replace with your email)
+curl -s -X POST http://127.0.0.1:5001/api/health/test-email \
+  -H "Content-Type: application/json" \
+  -d '{"to":"you@example.com"}'
+
+# 4) Confirm password_reset_tokens table exists
+docker compose exec backend npx prisma migrate status
+```
+
+- Empty `SMTP_*` in step 1 → recreate backend after fixing `backend/.env` path.
+- Logs show `Invalid login` / `535` → regenerate Google **App Password** (2FA required); use 16 chars **without spaces**.
+- Logs show `password_reset_tokens` / Prisma P2021 → run `docker compose exec backend npx prisma migrate deploy`.
+- Port 587 timeout → try `SMTP_PORT=465` and `SMTP_SECURE=true` in `backend/.env`, then recreate.
+
 ### Test login (after seed)
 
 | Role | Email | Password |

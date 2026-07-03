@@ -69,12 +69,13 @@ export class PasswordResetService {
           expires_at: expiresAt,
         },
       });
-      
-      // Create reset URL
-      const resetUrl = `${config.frontendUrl}/reset-password?token=${token}`;
 
-      // Send email
-      const html = `
+      try {
+        // Create reset URL
+        const resetUrl = `${config.frontendUrl}/reset-password?token=${token}`;
+
+        // Send email
+        const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #2563eb;">Reset Your Password</h2>
           <p>Dear ${user.name},</p>
@@ -106,18 +107,37 @@ export class PasswordResetService {
         </div>
       `;
 
-      logger.info({ userId: user.id, email, name: user.name }, 'Attempting to send password reset email');
-      
-      await this.emailService.sendEmail({
-        to: user.email,
-        subject: 'Reset Your Gradion Password',
-        html,
-      });
+        logger.info({ userId: user.id, email, name: user.name }, 'Attempting to send password reset email');
 
-      logger.info({ userId: user.id, email, name: user.name }, 'Password reset email sent successfully');
+        await this.emailService.sendEmail({
+          to: user.email,
+          subject: 'Reset Your Gradion Password',
+          html,
+        });
+
+        logger.info({ userId: user.id, email, name: user.name }, 'Password reset email sent successfully');
+      } catch (emailError) {
+        await prisma.passwordResetToken.delete({ where: { token } }).catch((deleteError) => {
+          logger.error({ deleteError, token }, 'Failed to clean up password reset token after email error');
+        });
+        logger.error(
+          { error: emailError, email, userId: user.id, userName: user.name },
+          'Failed to send password reset email'
+        );
+        if (emailError instanceof Error && emailError.message) {
+          throw emailError;
+        }
+        throw new Error('We could not send the password reset email. Please try again later.');
+      }
     } catch (error) {
-      logger.error({ error, email, userId: user?.id, userName: user?.name }, 'Failed to send password reset email');
-      throw new Error('Failed to send password reset email');
+      if (error instanceof Error && error.message.includes('We could not send')) {
+        throw error;
+      }
+      if (error instanceof Error && error.message.includes('Email service is not configured')) {
+        throw error;
+      }
+      logger.error({ error, email, userId: user?.id }, 'Password reset request failed');
+      throw error;
     }
   }
 

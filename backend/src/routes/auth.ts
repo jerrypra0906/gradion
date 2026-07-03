@@ -8,7 +8,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
 import { EmailVerificationService } from '../services/emailVerification.service.js';
 import { PasswordResetService } from '../services/passwordReset.service.js';
 import { RegistrationAttemptService } from '../services/registrationAttempt.service.js';
-import { formatErrorMessage } from '../utils/errorResponse.js';
+import { formatErrorMessage, getUserFacingError, isEmailServiceError } from '../utils/errorResponse.js';
 import { prisma } from '../lib/prisma.js';
 import { provisionNewUserTrialSubscription } from '../lib/subscription.js';
 import bcrypt from 'bcryptjs';
@@ -453,10 +453,11 @@ export async function authRoutes(
       };
     } catch (error: any) {
       fastify.log.error({ error, email: (request.body as any)?.email }, 'Error in forgot password route');
-      reply.code(400);
+      const statusCode = isEmailServiceError(error) ? 503 : 400;
+      reply.code(statusCode);
       return {
         success: false,
-        error: formatErrorMessage(error, 'Unable to process password reset request'),
+        error: getUserFacingError(error, 'Unable to process password reset request'),
       };
     }
   });
@@ -472,10 +473,13 @@ export async function authRoutes(
       // Hash new password
       const hashedPassword = await bcrypt.hash(body.newPassword, config.auth.bcryptRounds);
       
-      // Update password
+      // Update password and mark email verified (reset link proves inbox access)
       await prisma.user.update({
         where: { id: userId },
-        data: { password_hash: hashedPassword },
+        data: {
+          password_hash: hashedPassword,
+          is_email_verified: true,
+        },
       });
       
       // Mark token as used
