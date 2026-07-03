@@ -2,10 +2,11 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
-import { getPlanConfig, calculateEndDate, provisionNewUserTrialSubscription, getEffectivePlanConfig } from '../lib/subscription.js';
+import { getPlanConfig, calculateEndDate, provisionNewUserTrialSubscription, getEffectivePlanConfig, ensureAITokenWallet, syncWalletsForPlanType } from '../lib/subscription.js';
 import { PaymentService } from '../services/payment.service.js';
 import { SubscriptionNotificationService } from '../services/subscriptionNotification.service.js';
 import { logger } from '../utils/logger.js';
+import { REFERRAL_SUBSCRIPTION_POINTS } from '../services/user.service.js';
 import { calculatePaymentFee } from '../utils/paymentFee.js';
 import crypto from 'crypto';
 
@@ -19,6 +20,8 @@ async function getAllPlans() {
   const plans: Record<string, any> = {};
   for (const config of configs) {
     plans[config.plan_type] = {
+      name: config.name,
+      description: config.description,
       weeks: config.weeks,
       aiAccess: config.ai_access,
       monthlyTokenLimit: config.monthly_token_limit,
@@ -238,9 +241,21 @@ export async function subscriptionsRoutes(
         data: updateData,
       });
 
+      let walletsSynced = 0;
+      if (body.monthly_token_limit !== undefined) {
+        walletsSynced = await syncWalletsForPlanType(
+          planType as 'free' | 'pro' | 'premium' | 'therapist',
+          body.monthly_token_limit
+        );
+      }
+
       return {
         success: true,
         data: updated,
+        message:
+          walletsSynced > 0
+            ? `Plan updated. Synced token limit to ${walletsSynced} active wallet(s).`
+            : 'Plan updated successfully.',
       };
     }
   );
@@ -618,9 +633,7 @@ export async function subscriptionsRoutes(
         subscription = await provisionNewUserTrialSubscription(user.id);
       }
 
-      const aiWallet = await prisma.aITokenWallet.findUnique({
-        where: { user_id: user.id },
-      });
+      const { wallet: aiWallet } = await ensureAITokenWallet(user.id);
 
       const planConfig = await getEffectivePlanConfig(subscription);
 
@@ -657,23 +670,11 @@ export async function subscriptionsRoutes(
         },
       });
 
-      const aiWallet = await prisma.aITokenWallet.findUnique({
-        where: { user_id: id },
-      });
+      const { wallet: aiWallet } = await ensureAITokenWallet(id);
 
-      // If no subscription exists, return null for subscription and planConfig
-      if (!subscription) {
-        return {
-          success: true,
-          data: {
-            subscription: null,
-            aiWallet,
-            planConfig: null,
-          },
-        };
-      }
-
-      const planConfig = await getPlanConfig(subscription.plan_type);
+      const planConfig = subscription
+        ? await getEffectivePlanConfig(subscription)
+        : null;
 
       return {
         success: true,
@@ -1127,18 +1128,18 @@ export async function subscriptionsRoutes(
       }
 
       if (shouldAward) {
-        // Award 900 points to the referrer
+        // Award subscription referral points to the referrer
         await prisma.user.update({
           where: { id: referrer.id },
           data: {
             points: {
-              increment: 900,
+              increment: REFERRAL_SUBSCRIPTION_POINTS,
             },
           },
         });
         logger.info(
-          { referrerId: referrer.id, userId, planType, oldPlanType },
-          'Awarded 900 points to referrer for subscription'
+          { referrerId: referrer.id, userId, planType, oldPlanType, points: REFERRAL_SUBSCRIPTION_POINTS },
+          'Awarded referral points for subscription'
         );
       }
     } catch (error: any) {

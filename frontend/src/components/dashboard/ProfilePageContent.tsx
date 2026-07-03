@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Copy, Sparkles, User } from 'lucide-react';
+import { Check, Copy, KeyRound, Sparkles, User } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
 import { DashboardSectionCard } from '@/components/dashboard/DashboardSectionCard';
@@ -29,19 +29,19 @@ interface AITokenWallet {
 }
 
 interface PlanConfig {
+  planType?: string;
+  name?: string;
+  description?: string | null;
   weeks: number;
   aiAccess: boolean;
   monthlyTokenLimit: number;
   price: number;
-}
-
-interface SubscriptionData {
-  subscription: Subscription;
-  aiWallet: AITokenWallet | null;
-  planConfig: PlanConfig;
+  isTrial?: boolean;
 }
 
 interface AvailablePlan {
+  name?: string;
+  description?: string | null;
   weeks: number;
   aiAccess: boolean;
   monthlyTokenLimit: number;
@@ -55,6 +55,12 @@ interface AvailablePlans {
   therapist?: AvailablePlan;
 }
 
+interface SubscriptionData {
+  subscription: Subscription;
+  aiWallet: AITokenWallet | null;
+  planConfig: PlanConfig;
+}
+
 interface UserProfile {
   id: number;
   name: string;
@@ -62,12 +68,15 @@ interface UserProfile {
   phone_number: string | null;
   referral_code: string | null;
   points: number;
+  referral_signups?: number;
   role: string;
   created_at: string;
   is_email_verified: boolean;
+  has_password: boolean;
 }
 
 import { Button } from '@/components/ui/Button';
+import { PasswordField } from '@/components/auth/PasswordField';
 import { apiClient, ApiResponse } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { isClinicalOrAdmin } from '@/lib/roles';
@@ -90,6 +99,17 @@ export function ProfilePageContent() {
     phone_number: '',
   });
   const [saving, setSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordErrors, setPasswordErrors] = useState<{
+    newPassword?: string;
+    confirmPassword?: string;
+  }>({});
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -186,6 +206,59 @@ export function ProfilePageContent() {
     }
   };
 
+  const validateNewPassword = (pwd: string): string | undefined => {
+    if (pwd.length < 6) return 'Password must be at least 6 characters';
+    return undefined;
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage(null);
+
+    const newPasswordError = validateNewPassword(passwordForm.newPassword);
+    if (newPasswordError) {
+      setPasswordErrors({ newPassword: newPasswordError });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordErrors({ confirmPassword: 'Passwords do not match' });
+      return;
+    }
+
+    setPasswordErrors({});
+    setChangingPassword(true);
+
+    try {
+      const response = await apiClient.post<ApiResponse<{ message: string }>>(
+        '/profile/change-password',
+        {
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        },
+      );
+
+      if (response.data.success) {
+        setPasswordMessage({
+          type: 'success',
+          text: response.data.data?.message || 'Password changed successfully',
+        });
+        setPasswordForm({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        });
+      }
+    } catch (err: any) {
+      setPasswordMessage({
+        type: 'error',
+        text: err.response?.data?.error || 'Failed to change password',
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const copyReferralCode = () => {
     if (userProfile?.referral_code) {
       navigator.clipboard.writeText(userProfile.referral_code);
@@ -225,6 +298,28 @@ export function ProfilePageContent() {
   };
 
   const isOnTrial = () => subscriptionData?.subscription.status === 'trial';
+
+  const getSubscriptionPeriodWeeks = () => {
+    if (!subscriptionData) return 0;
+    if (
+      isOnTrial() &&
+      subscriptionData.subscription.start_date &&
+      subscriptionData.subscription.end_date
+    ) {
+      const start = new Date(subscriptionData.subscription.start_date).getTime();
+      const end = new Date(subscriptionData.subscription.end_date).getTime();
+      return Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24 * 7)));
+    }
+    return subscriptionData.planConfig.weeks;
+  };
+
+  const getPlanDisplayName = () => {
+    if (!subscriptionData) return '';
+    const name =
+      subscriptionData.planConfig.name ||
+      subscriptionData.subscription.plan_type;
+    return isOnTrial() ? `${name} (Free Trial)` : name;
+  };
 
   const getDaysRemaining = () => {
     if (!subscriptionData?.subscription?.end_date) return null;
@@ -369,13 +464,99 @@ export function ProfilePageContent() {
           )}
         </DashboardSectionCard>
 
-        <DashboardSectionCard title="Referral & Rewards">
+        <DashboardSectionCard
+          title="Change Password"
+          subtitle={
+            userProfile?.has_password
+              ? 'Update your account password'
+              : 'Your account uses Google Sign-In'
+          }
+        >
+          {userProfile?.has_password ? (
+            <form className="max-w-md space-y-4" onSubmit={handleChangePassword}>
+              {passwordMessage && (
+                <div
+                  className={cn(
+                    'rounded-lg border px-4 py-3 text-sm',
+                    passwordMessage.type === 'success'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-red-200 bg-red-50 text-red-700',
+                  )}
+                >
+                  {passwordMessage.text}
+                </div>
+              )}
+
+              <PasswordField
+                label="Current password"
+                value={passwordForm.currentPassword}
+                onChange={(value) =>
+                  setPasswordForm((prev) => ({ ...prev, currentPassword: value }))
+                }
+                required
+                autoComplete="current-password"
+                id="profile-current-password"
+              />
+
+              <PasswordField
+                label="New password"
+                value={passwordForm.newPassword}
+                onChange={(value) => {
+                  setPasswordForm((prev) => ({ ...prev, newPassword: value }));
+                  setPasswordErrors((prev) => ({
+                    ...prev,
+                    newPassword: validateNewPassword(value),
+                    confirmPassword:
+                      passwordForm.confirmPassword && value !== passwordForm.confirmPassword
+                        ? 'Passwords do not match'
+                        : undefined,
+                  }));
+                }}
+                error={passwordErrors.newPassword}
+                required
+                autoComplete="new-password"
+                id="profile-new-password"
+              />
+
+              <PasswordField
+                label="Confirm new password"
+                value={passwordForm.confirmPassword}
+                onChange={(value) => {
+                  setPasswordForm((prev) => ({ ...prev, confirmPassword: value }));
+                  setPasswordErrors((prev) => ({
+                    ...prev,
+                    confirmPassword:
+                      value !== passwordForm.newPassword ? 'Passwords do not match' : undefined,
+                  }));
+                }}
+                error={passwordErrors.confirmPassword}
+                required
+                autoComplete="new-password"
+                id="profile-confirm-password"
+              />
+
+              <Button type="submit" variant="brand" disabled={changingPassword}>
+                {changingPassword ? 'Saving...' : 'Update password'}
+              </Button>
+            </form>
+          ) : (
+            <div className="flex gap-3 rounded-xl border border-[#E5E8EB] bg-[#FDF8F1] p-4 text-sm text-[#1A2B4C]/70">
+              <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-[#1A2B4C]/45" aria-hidden />
+              <p>
+                This account uses Google Sign-In and does not have a password to change here.
+                Continue signing in with Google on the login page.
+              </p>
+            </div>
+          )}
+        </DashboardSectionCard>
+
+        <DashboardSectionCard title={t('referralRewards')}>
           <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
             <div>
-              <dt className="text-sm font-medium text-[#1A2B4C]/55">Referral Code</dt>
+              <dt className="text-sm font-medium text-[#1A2B4C]/55">{t('referralCode')}</dt>
               <dd className="mt-1 flex items-center gap-2">
                 <span className="font-mono text-lg font-bold text-[#00C1B2]">
-                  {userProfile?.referral_code || 'Generating...'}
+                  {userProfile?.referral_code ?? '—'}
                 </span>
                 {userProfile?.referral_code && (
                   <button
@@ -388,20 +569,25 @@ export function ProfilePageContent() {
                   </button>
                 )}
               </dd>
-              <p className="mt-2 text-xs text-[#1A2B4C]/50">
-                Share this code with friends! You&apos;ll earn 1,000 points when they register.
-              </p>
+              <p className="mt-2 text-xs text-[#1A2B4C]/50">{t('shareReferralCode')}</p>
+              {(userProfile?.referral_signups ?? 0) > 0 && (
+                <p className="mt-1 text-xs font-medium text-[#00A896]">
+                  {userProfile?.referral_signups} friend
+                  {userProfile?.referral_signups === 1 ? '' : 's'} registered with your code
+                </p>
+              )}
             </div>
             <div>
-              <dt className="text-sm font-medium text-[#1A2B4C]/55">Points Balance</dt>
+              <dt className="text-sm font-medium text-[#1A2B4C]/55">{t('pointsBalance')}</dt>
               <dd className="mt-1 flex items-baseline gap-2">
                 <span className="font-montserrat text-3xl font-bold text-[#FFB900]">
-                  {userProfile?.points?.toLocaleString('id-ID') || '0'}
+                  {(userProfile?.points ?? 0).toLocaleString('id-ID')}
                 </span>
                 <span className="text-sm text-[#1A2B4C]/55">points</span>
               </dd>
               <p className="mt-2 text-xs text-[#1A2B4C]/50">
-                1 point = 1 Rupiah. Points can be used for subscription discounts.
+                1 point = 1 Rupiah (≈ Rp {(userProfile?.points ?? 0).toLocaleString('id-ID')} discount
+                value). Points can be used at checkout.
               </p>
             </div>
           </dl>
@@ -425,20 +611,60 @@ export function ProfilePageContent() {
               </span>
             }
           >
+            {subscriptionData.planConfig.description && (
+              <p className="mb-6 text-sm text-[#1A2B4C]/65">
+                {subscriptionData.planConfig.description}
+              </p>
+            )}
             <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
               <div>
-                <dt className="text-sm font-medium text-[#1A2B4C]/55">Plan Type</dt>
-                <dd className="mt-1 text-sm font-semibold capitalize text-[#1A2B4C]">
-                  {isOnTrial()
-                    ? `Free trial (${subscriptionData.planConfig.weeks} weeks)`
-                    : subscriptionData.subscription.plan_type}
+                <dt className="text-sm font-medium text-[#1A2B4C]/55">Plan</dt>
+                <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                  {getPlanDisplayName()}
+                </dd>
+                <p className="mt-1 text-xs capitalize text-[#1A2B4C]/45">
+                  {subscriptionData.subscription.plan_type} plan
+                </p>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-[#1A2B4C]/55">Price</dt>
+                <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                  {isOnTrial() ? (
+                    <>
+                      Free trial
+                      {subscriptionData.planConfig.price > 0 && (
+                        <span className="ml-2 text-xs font-normal text-[#1A2B4C]/50">
+                          (then {formatPrice(subscriptionData.planConfig.price)})
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    formatPrice(subscriptionData.planConfig.price)
+                  )}
                 </dd>
               </div>
               <div>
                 <dt className="text-sm font-medium text-[#1A2B4C]/55">Subscription Period</dt>
                 <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
-                  {subscriptionData.planConfig.weeks}{' '}
-                  {subscriptionData.planConfig.weeks === 1 ? 'Week' : 'Weeks'}
+                  {getSubscriptionPeriodWeeks()}{' '}
+                  {getSubscriptionPeriodWeeks() === 1 ? 'Week' : 'Weeks'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium text-[#1A2B4C]/55">AI Features</dt>
+                <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                  {subscriptionData.planConfig.aiAccess || isOnTrial() ? (
+                    <>
+                      Included
+                      <span className="ml-2 text-xs font-normal text-[#1A2B4C]/55">
+                        ({subscriptionData.planConfig.monthlyTokenLimit.toLocaleString('id-ID')}{' '}
+                        tokens
+                        {isOnTrial() ? ' for trial' : '/month'})
+                      </span>
+                    </>
+                  ) : (
+                    'Not included'
+                  )}
                 </dd>
               </div>
               <div>
@@ -483,7 +709,9 @@ export function ProfilePageContent() {
                 <h4 className="text-sm font-semibold text-[#1A2B4C]">Free trial — AI included</h4>
                 <p className="mt-2 text-sm text-[#1A2B4C]/70">
                   You can use AI to generate Initial Observation reports and Weekly Home Programs
-                  (ABA) during your {subscriptionData.planConfig.weeks}-week trial.
+                  (ABA) during your {getSubscriptionPeriodWeeks()}-week trial on the{' '}
+                  {subscriptionData.planConfig.name || subscriptionData.subscription.plan_type} plan
+                  ({subscriptionData.planConfig.monthlyTokenLimit.toLocaleString('id-ID')} tokens).
                   {daysRemaining !== null && daysRemaining > 0
                     ? ` ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining.`
                     : ''}
@@ -510,51 +738,60 @@ export function ProfilePageContent() {
           (subscriptionData.planConfig.aiAccess || isOnTrial()) && (
             <DashboardSectionCard
               title="AI Token Wallet"
-              subtitle="Penggunaan token AI bulan ini"
+              subtitle={
+                isOnTrial()
+                  ? `Trial token pool (from ${subscriptionData.subscription.plan_type} plan settings)`
+                  : 'Monthly AI token usage for your plan'
+              }
             >
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-[#1A2B4C]/55">Monthly Limit</dt>
-                  <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
-                    {subscriptionData.aiWallet.monthly_token_limit.toLocaleString()} tokens
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-[#1A2B4C]/55">Current Usage</dt>
-                  <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
-                    {subscriptionData.aiWallet.current_token_usage.toLocaleString()} tokens
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-[#1A2B4C]/55">Tokens Remaining</dt>
-                  <dd className="mt-1 text-sm font-semibold text-[#00A896]">
-                    {(
-                      subscriptionData.aiWallet.monthly_token_limit -
-                      subscriptionData.aiWallet.current_token_usage
-                    ).toLocaleString()}{' '}
-                    tokens
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-[#1A2B4C]/55">Renewal Date</dt>
-                  <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
-                    {formatDate(subscriptionData.aiWallet.renewal_date)}
-                  </dd>
-                </div>
-              </dl>
-              <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#E5E8EB]">
-                <div
-                  className="h-full rounded-full bg-[#00C1B2] transition-all"
-                  style={{
-                    width: `${Math.min(
-                      (subscriptionData.aiWallet.current_token_usage /
-                        subscriptionData.aiWallet.monthly_token_limit) *
-                        100,
-                      100,
-                    )}%`,
-                  }}
-                />
-              </div>
+              {(() => {
+                const tokenLimit =
+                  subscriptionData.planConfig?.monthlyTokenLimit ??
+                  subscriptionData.aiWallet.monthly_token_limit;
+                const tokenUsed = subscriptionData.aiWallet.current_token_usage;
+                const tokenRemaining = Math.max(0, tokenLimit - tokenUsed);
+                return (
+                  <>
+                    <dl className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-sm font-medium text-[#1A2B4C]/55">Monthly Limit</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                          {tokenLimit.toLocaleString('id-ID')} tokens
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-[#1A2B4C]/55">Current Usage</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                          {tokenUsed.toLocaleString('id-ID')} tokens
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-[#1A2B4C]/55">Tokens Remaining</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#00A896]">
+                          {tokenRemaining.toLocaleString('id-ID')} tokens
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-sm font-medium text-[#1A2B4C]/55">Renewal Date</dt>
+                        <dd className="mt-1 text-sm font-semibold text-[#1A2B4C]">
+                          {formatDate(subscriptionData.aiWallet.renewal_date)}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-[#E5E8EB]">
+                      <div
+                        className="h-full rounded-full bg-[#00C1B2] transition-all"
+                        style={{
+                          width: `${Math.min(
+                            tokenLimit > 0 ? (tokenUsed / tokenLimit) * 100 : 0,
+                            100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
             </DashboardSectionCard>
           )}
 
@@ -592,7 +829,9 @@ export function ProfilePageContent() {
                     >
                       <div className={cn('px-4 py-4 text-white', headerBg)}>
                         <div className="flex items-center justify-between">
-                          <h4 className="font-montserrat text-lg font-bold capitalize">{planType}</h4>
+                          <h4 className="font-montserrat text-lg font-bold">
+                            {plan.name || planType}
+                          </h4>
                           {isCurrent && (
                             <span className="rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
                               Current Plan

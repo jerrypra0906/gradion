@@ -7,29 +7,34 @@ interface ChildCardProps {
   child: Child;
   ageLabel: string;
   diagnosisLabel: string;
-  quotaLabel: string;
-  sessionsLabel: string;
+  tokenLabel: string;
+  tokenUsed: number;
+  tokenLimit: number;
 }
 
-function getQuotaPercent(used: number, quota: number) {
-  if (quota <= 0) return 0;
-  return Math.min(100, Math.round((used / quota) * 100));
+function getTokenPercent(used: number, limit: number) {
+  if (limit <= 0) return 0;
+  return Math.min(100, Math.round((used / limit) * 100));
 }
 
-function getQuotaBarColor(percent: number) {
+function getTokenBarColor(percent: number) {
   if (percent >= 90) return 'bg-[#FFB900]';
-  if (percent >= 70) return 'bg-[#00C1B2]';
   return 'bg-[#00C1B2]';
+}
+
+function formatTokenCount(value: number) {
+  return value.toLocaleString('id-ID');
 }
 
 export function ChildCard({
   child,
   ageLabel,
   diagnosisLabel,
-  quotaLabel,
-  sessionsLabel,
+  tokenLabel,
+  tokenUsed,
+  tokenLimit,
 }: ChildCardProps) {
-  const quotaPercent = getQuotaPercent(child.used_sessions, child.monthly_quota);
+  const tokenPercent = getTokenPercent(tokenUsed, tokenLimit);
   const initial = child.name.charAt(0).toUpperCase();
 
   return (
@@ -65,20 +70,20 @@ export function ChildCard({
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between text-sm">
-          <span className="font-medium text-[#1A2B4C]/70">{quotaLabel}</span>
+          <span className="font-medium text-[#1A2B4C]/70">{tokenLabel}</span>
           <span className="font-semibold text-[#1A2B4C]">
-            {child.used_sessions} / {child.monthly_quota} {sessionsLabel}
+            {formatTokenCount(tokenUsed)} / {formatTokenCount(tokenLimit)}
           </span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-[#E5E8EB]">
           <div
-            className={cn('h-full rounded-full transition-all', getQuotaBarColor(quotaPercent))}
-            style={{ width: `${quotaPercent}%` }}
+            className={cn('h-full rounded-full transition-all', getTokenBarColor(tokenPercent))}
+            style={{ width: `${tokenPercent}%` }}
             role="progressbar"
-            aria-valuenow={quotaPercent}
+            aria-valuenow={tokenPercent}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label={`${quotaPercent}% ${quotaLabel}`}
+            aria-label={`${tokenPercent}% ${tokenLabel}`}
           />
         </div>
       </div>

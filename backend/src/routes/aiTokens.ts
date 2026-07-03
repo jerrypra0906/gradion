@@ -2,25 +2,8 @@ import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth.js';
-import type { SubscriptionPlan } from '@prisma/client';
-
-// Helper function to get plan config from database
-async function getPlanConfig(planType: SubscriptionPlan) {
-  const config = await prisma.subscriptionPlanConfig.findUnique({
-    where: { plan_type: planType },
-  });
-
-  if (!config) {
-    throw new Error(`Plan configuration not found for type: ${planType}`);
-  }
-
-  return {
-    weeks: config.weeks,
-    aiAccess: config.ai_access,
-    monthlyTokenLimit: config.monthly_token_limit,
-    price: config.price,
-  };
-}
+import { ensureAITokenWallet, getEffectivePlanConfig } from '../lib/subscription.js';
+import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 
 const checkTokenQuotaSchema = z.object({
   tokens_needed: z.number().int().positive(),
@@ -34,60 +17,40 @@ export async function aiTokensRoutes(
   fastify: FastifyInstance,
   _options: FastifyPluginOptions
 ) {
+  // Token wallet + plan limits + operation cost estimates
+  fastify.get('/info', { preHandler: authenticate }, async (request, _reply) => {
+    const user = (request as AuthenticatedRequest).user!;
+    const { wallet, subscription } = await ensureAITokenWallet(user.id);
+    const planConfig = await getEffectivePlanConfig(subscription);
+
+    return {
+      success: true,
+      data: {
+        wallet: {
+          ...wallet,
+          tokens_remaining: wallet.monthly_token_limit - wallet.current_token_usage,
+          has_quota: wallet.current_token_usage < wallet.monthly_token_limit,
+        },
+        planConfig: {
+          planType: subscription.plan_type,
+          status: subscription.status,
+          monthlyTokenLimit: planConfig.monthlyTokenLimit,
+          aiAccess: planConfig.aiAccess,
+          isTrial: planConfig.isTrial ?? false,
+        },
+        operationEstimates: AI_TOKEN_COST_ESTIMATES,
+      },
+    };
+  });
+
   // Get user's AI token wallet (authenticated)
   fastify.get(
     '/wallet',
     { preHandler: authenticate },
     async (request, _reply) => {
       const user = (request as AuthenticatedRequest).user!;
-
-      let wallet = await prisma.aITokenWallet.findUnique({
-        where: { user_id: user.id },
-      });
-
-      // Create default wallet if none exists
-      if (!wallet) {
-        const subscription = await prisma.subscription.findUnique({
-          where: { user_id: user.id },
-        });
-
-        const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-        const planConfig = await getPlanConfig(planType);
-        const renewalDate = new Date();
-        renewalDate.setMonth(renewalDate.getMonth() + 1);
-
-        wallet = await prisma.aITokenWallet.create({
-          data: {
-            user_id: user.id,
-            plan_type: planType,
-            monthly_token_limit: planConfig.monthlyTokenLimit,
-            renewal_date: renewalDate,
-          },
-        });
-      }
-
-      // Check if renewal is needed
-      const now = new Date();
-      if (wallet.renewal_date <= now) {
-        const subscription = await prisma.subscription.findUnique({
-          where: { user_id: user.id },
-        });
-
-        const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-        const planConfig = await getPlanConfig(planType);
-        const newRenewalDate = new Date(now);
-        newRenewalDate.setMonth(newRenewalDate.getMonth() + 1);
-
-        wallet = await prisma.aITokenWallet.update({
-          where: { id: wallet.id },
-          data: {
-            current_token_usage: 0,
-            monthly_token_limit: planConfig.monthlyTokenLimit,
-            renewal_date: newRenewalDate,
-            last_reset_date: now,
-          },
-        });
-      }
+      const { wallet, subscription } = await ensureAITokenWallet(user.id);
+      const planConfig = await getEffectivePlanConfig(subscription);
 
       return {
         success: true,
@@ -95,6 +58,9 @@ export async function aiTokensRoutes(
           ...wallet,
           tokens_remaining: wallet.monthly_token_limit - wallet.current_token_usage,
           has_quota: wallet.current_token_usage < wallet.monthly_token_limit,
+          plan_type: subscription.plan_type,
+          subscription_status: subscription.status,
+          plan_monthly_token_limit: planConfig.monthlyTokenLimit,
         },
       };
     }
@@ -104,44 +70,11 @@ export async function aiTokensRoutes(
   fastify.post(
     '/check',
     { preHandler: authenticate },
-    async (request, reply) => {
+    async (request, _reply) => {
       const user = (request as AuthenticatedRequest).user!;
       const body = checkTokenQuotaSchema.parse(request.body);
 
-      let wallet = await prisma.aITokenWallet.findUnique({
-        where: { user_id: user.id },
-      });
-
-      if (!wallet) {
-        reply.code(404);
-        return {
-          success: false,
-          error: 'AI token wallet not found',
-        };
-      }
-
-      // Check if renewal is needed
-      const now = new Date();
-      if (wallet.renewal_date <= now) {
-        const subscription = await prisma.subscription.findUnique({
-          where: { user_id: user.id },
-        });
-
-        const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-        const planConfig = await getPlanConfig(planType);
-        const newRenewalDate = new Date(now);
-        newRenewalDate.setMonth(newRenewalDate.getMonth() + 1);
-
-        wallet = await prisma.aITokenWallet.update({
-          where: { id: wallet.id },
-          data: {
-            current_token_usage: 0,
-            monthly_token_limit: planConfig.monthlyTokenLimit,
-            renewal_date: newRenewalDate,
-            last_reset_date: now,
-          },
-        });
-      }
+      const { wallet } = await ensureAITokenWallet(user.id);
 
       const tokensRemaining = wallet.monthly_token_limit - wallet.current_token_usage;
       const hasEnough = tokensRemaining >= body.tokens_needed;
@@ -167,42 +100,8 @@ export async function aiTokensRoutes(
       const user = (request as AuthenticatedRequest).user!;
       const body = useTokensSchema.parse(request.body);
 
-      let wallet = await prisma.aITokenWallet.findUnique({
-        where: { user_id: user.id },
-      });
+      const { wallet } = await ensureAITokenWallet(user.id);
 
-      if (!wallet) {
-        reply.code(404);
-        return {
-          success: false,
-          error: 'AI token wallet not found',
-        };
-      }
-
-      // Check if renewal is needed
-      const now = new Date();
-      if (wallet.renewal_date <= now) {
-        const subscription = await prisma.subscription.findUnique({
-          where: { user_id: user.id },
-        });
-
-        const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-        const planConfig = await getPlanConfig(planType);
-        const newRenewalDate = new Date(now);
-        newRenewalDate.setMonth(newRenewalDate.getMonth() + 1);
-
-        wallet = await prisma.aITokenWallet.update({
-          where: { id: wallet.id },
-          data: {
-            current_token_usage: 0,
-            monthly_token_limit: planConfig.monthlyTokenLimit,
-            renewal_date: newRenewalDate,
-            last_reset_date: now,
-          },
-        });
-      }
-
-      // Check if user has enough tokens
       const tokensRemaining = wallet.monthly_token_limit - wallet.current_token_usage;
       if (tokensRemaining < body.tokens_used) {
         reply.code(403);
@@ -212,7 +111,6 @@ export async function aiTokensRoutes(
         };
       }
 
-      // Update token usage
       const updated = await prisma.aITokenWallet.update({
         where: { id: wallet.id },
         data: {
@@ -232,4 +130,3 @@ export async function aiTokensRoutes(
     }
   );
 }
-

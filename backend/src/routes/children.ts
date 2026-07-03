@@ -17,6 +17,7 @@ import {
   syncMissingParentLogsForChild,
 } from '../services/parentLogFromAba.service.js';
 import { config } from '../config/env.js';
+import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 
 const createChildSchema = z.object({
   name: z.string().min(1),
@@ -45,7 +46,7 @@ function isAssignedStaff(role: string) {
   return role === 'therapist' || role === 'consultant';
 }
 
-const INITIAL_ASSESSMENT_TOKEN_ESTIMATE = 900;
+const INITIAL_ASSESSMENT_TOKEN_ESTIMATE = AI_TOKEN_COST_ESTIMATES.initialAssessment.preCheck;
 
 async function assertInitialAssessmentAICapability(
   userId: number

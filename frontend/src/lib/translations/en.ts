@@ -236,6 +236,8 @@ export const en = {
   resources: 'Resources',
   recentChildren: 'Recent Children',
   quotaLabel: 'Quota',
+  tokenLabel: 'Token',
+  tokenUtilization: 'Token utilization',
   sessionsLabel: 'sessions',
   noDiagnosis: 'No diagnosis',
   reviewLogs: 'Review Logs',
@@ -392,7 +394,7 @@ export const en = {
   // Profile
   nameCannotBeChanged: 'Name cannot be changed',
   phoneNumber: 'Phone Number',
-  shareReferralCode: 'Share this code with friends! You\'ll earn 1,000 points when they register.',
+  shareReferralCode: 'Share this code! Earn 1,000 points when someone registers, plus 900 points when they subscribe to a paid plan.',
   pointsDescription: '1 point = 1 Rupiah. Points can be used for subscription discounts.',
   howToSubscribe: 'How to Subscribe',
   subscribeInstructions: 'Click "Request Upgrade" or "Request Plan" to submit your subscription request. An administrator will review and activate your subscription. For immediate activation, please contact support directly.',

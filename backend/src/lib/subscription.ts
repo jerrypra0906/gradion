@@ -1,13 +1,137 @@
 import { prisma } from './prisma.js';
 import { config } from '../config/env.js';
-import type { Subscription, SubscriptionPlan } from '@prisma/client';
+import type { AITokenWallet, Subscription, SubscriptionPlan } from '@prisma/client';
 
 export function getTrialWeeks(): number {
   return config.subscription.trialWeeks;
 }
 
+/**
+ * Token pool for a subscription — always from admin plan config (subscription_plan_configs).
+ * @deprecated Use getPlanConfig(planType).monthlyTokenLimit instead.
+ */
 export function getTrialTokenLimit(): number {
   return config.ai.tokenLimitFreeTrial;
+}
+
+function nextMonthlyRenewalDate(from: Date = new Date()): Date {
+  const d = new Date(from);
+  d.setMonth(d.getMonth() + 1);
+  return d;
+}
+
+/**
+ * Resolve monthly AI token limit from admin-configured plan settings.
+ */
+export async function resolveTokenLimitForSubscription(
+  subscription: Subscription
+): Promise<number> {
+  const planConfig = await getPlanConfig(subscription.plan_type);
+  return planConfig.monthlyTokenLimit;
+}
+
+/**
+ * Ensure the user's AI wallet exists and reflects the current subscription + admin plan config.
+ * Does not reset usage unless a non-trial monthly renewal is due.
+ */
+export async function ensureAITokenWallet(userId: number): Promise<{
+  wallet: AITokenWallet;
+  subscription: Subscription;
+}> {
+  let subscription = await prisma.subscription.findUnique({
+    where: { user_id: userId },
+  });
+  if (!subscription) {
+    subscription = await provisionNewUserTrialSubscription(userId);
+  }
+  subscription = await expireTrialIfNeeded(subscription);
+
+  const tokenLimit = await resolveTokenLimitForSubscription(subscription);
+  const isTrial = subscription.status === 'trial';
+  const now = new Date();
+
+  let wallet = await prisma.aITokenWallet.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!wallet) {
+    const renewalDate =
+      isTrial && subscription.end_date ? subscription.end_date : nextMonthlyRenewalDate(now);
+
+    wallet = await prisma.aITokenWallet.create({
+      data: {
+        user_id: userId,
+        plan_type: subscription.plan_type,
+        monthly_token_limit: tokenLimit,
+        renewal_date: renewalDate,
+      },
+    });
+    return { wallet, subscription };
+  }
+
+  const needsMonthlyRenewal = !isTrial && wallet.renewal_date <= now;
+  const needsLimitSync =
+    wallet.monthly_token_limit !== tokenLimit || wallet.plan_type !== subscription.plan_type;
+  const needsTrialRenewalSync =
+    isTrial &&
+    subscription.end_date &&
+    wallet.renewal_date.getTime() !== subscription.end_date.getTime();
+
+  if (needsMonthlyRenewal) {
+    wallet = await prisma.aITokenWallet.update({
+      where: { id: wallet.id },
+      data: {
+        current_token_usage: 0,
+        monthly_token_limit: tokenLimit,
+        plan_type: subscription.plan_type,
+        renewal_date: nextMonthlyRenewalDate(now),
+        last_reset_date: now,
+      },
+    });
+  } else if (needsLimitSync || needsTrialRenewalSync) {
+    wallet = await prisma.aITokenWallet.update({
+      where: { id: wallet.id },
+      data: {
+        monthly_token_limit: tokenLimit,
+        plan_type: subscription.plan_type,
+        ...(isTrial && subscription.end_date ? { renewal_date: subscription.end_date } : {}),
+      },
+    });
+  }
+
+  return { wallet, subscription };
+}
+
+/**
+ * Push admin plan token limit to all active/trial wallets on that plan type.
+ */
+export async function syncWalletsForPlanType(
+  planType: SubscriptionPlan,
+  monthlyTokenLimit: number
+): Promise<number> {
+  const subscriptions = await prisma.subscription.findMany({
+    where: {
+      plan_type: planType,
+      status: { in: ['active', 'trial'] },
+    },
+    select: { user_id: true },
+  });
+
+  if (subscriptions.length === 0) {
+    return 0;
+  }
+
+  const result = await prisma.aITokenWallet.updateMany({
+    where: {
+      user_id: { in: subscriptions.map((s) => s.user_id) },
+    },
+    data: {
+      monthly_token_limit: monthlyTokenLimit,
+      plan_type: planType,
+    },
+  });
+
+  return result.count;
 }
 
 /**
@@ -93,7 +217,8 @@ export async function provisionNewUserTrialSubscription(userId: number): Promise
   if (existing) return existing;
 
   const trialWeeks = getTrialWeeks();
-  const tokenLimit = getTrialTokenLimit();
+  const proPlan = await getPlanConfig('pro');
+  const tokenLimit = proPlan.monthlyTokenLimit;
   const startDate = new Date();
   const endDate = calculateEndDate(startDate, trialWeeks);
 
@@ -151,10 +276,14 @@ export async function getPlanConfig(planType: SubscriptionPlan) {
   }
 
   return {
+    planType: configRow.plan_type,
+    name: configRow.name,
+    description: configRow.description,
     weeks: configRow.weeks,
     aiAccess: configRow.ai_access,
     monthlyTokenLimit: configRow.monthly_token_limit,
     price: configRow.price,
+    isActive: configRow.is_active,
   };
 }
 
@@ -169,7 +298,7 @@ export async function getEffectivePlanConfig(subscription: Subscription) {
       ...base,
       weeks: getTrialWeeks(),
       aiAccess: true,
-      monthlyTokenLimit: getTrialTokenLimit(),
+      monthlyTokenLimit: base.monthlyTokenLimit,
       price: 0,
       isTrial: true as const,
     };

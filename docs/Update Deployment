@@ -29,8 +29,18 @@ git pull
 cd frontend
 docker build -t gradion-frontend:prod -f Dockerfile .
 docker rm -f gradion-frontend
-docker run -d --name gradion-frontend --restart unless-stopped -p 5050:3000 gradion-frontend:prod
+docker run -d \
+  --name gradion-frontend \
+  --restart unless-stopped \
+  -p 5050:3000 \
+  gradion-frontend:prod
+docker ps --filter name=gradion-frontend
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5050
 ```
+
+If you see `502 Bad Gateway`, the frontend container is usually **not running** (check `docker ps -a`). A common mistake is an incomplete `docker run` line, e.g. `--restart` without `unless-stopped`.
+
+Ensure `frontend/.env.local` exists **before** `docker build` (e.g. `NEXT_PUBLIC_API_URL=https://api.gradion.id/api`).
 
 ### Test login (after seed)
 

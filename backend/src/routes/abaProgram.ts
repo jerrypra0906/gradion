@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
 import { config } from '../config/env.js';
+import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 import { formatErrorMessage } from '../utils/errorResponse.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -238,7 +239,10 @@ export async function abaProgramRoutes(
           return { success: false, error: 'Week not found' };
         }
 
-        const quota = await checkTokenQuota(user.id, 900);
+        const quota = await checkTokenQuota(
+          user.id,
+          AI_TOKEN_COST_ESTIMATES.weeklyProgramTranslate.preCheck
+        );
         if (!quota.hasQuota) {
           reply.code(403);
           return { success: false, error: quota.reason || 'Insufficient AI tokens' };
@@ -482,7 +486,10 @@ export async function abaProgramRoutes(
           return { success: false, error: 'Image too large (max 12MB)' };
         }
 
-        const quota = await checkTokenQuota(user.id, 1200);
+        const quota = await checkTokenQuota(
+          user.id,
+          AI_TOKEN_COST_ESTIMATES.therapyNotesOcr.preCheck
+        );
         if (!quota.hasQuota) {
           reply.code(403);
           return { success: false, error: quota.reason || 'Insufficient AI tokens' };

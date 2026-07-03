@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { config } from '../config/env.js';
+import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 import { logger } from '../utils/logger.js';
 import {
   checkTokenQuota,
@@ -114,7 +115,7 @@ export async function generateAbaWeekForChild(input: {
     take: 10,
   });
 
-  const estimated = 1400;
+  const estimated = AI_TOKEN_COST_ESTIMATES.weeklyAbaProgram.preCheck;
   const quota = await checkTokenQuota(input.userId, estimated);
   if (!quota.hasQuota) {
     return { ok: false, error: quota.reason || 'Insufficient AI tokens', code: 403 };

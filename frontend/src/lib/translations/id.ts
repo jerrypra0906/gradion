@@ -236,6 +236,8 @@ export const id = {
   resources: 'Sumber Daya',
   recentChildren: 'Anak Terbaru',
   quotaLabel: 'Kuota',
+  tokenLabel: 'Token',
+  tokenUtilization: 'Utilisasi token',
   sessionsLabel: 'sesi',
   noDiagnosis: 'Tidak ada diagnosis',
   reviewLogs: 'Tinjau Catatan',
@@ -392,7 +394,7 @@ export const id = {
   // Profile
   nameCannotBeChanged: 'Nama tidak dapat diubah',
   phoneNumber: 'Nomor Telepon',
-  shareReferralCode: 'Bagikan kode ini dengan teman! Anda akan mendapatkan 1.000 poin saat mereka mendaftar.',
+  shareReferralCode: 'Bagikan kode ini! Dapatkan 1.000 poin saat seseorang mendaftar, plus 900 poin saat mereka berlangganan paket berbayar.',
   pointsDescription: '1 poin = 1 Rupiah. Poin dapat digunakan untuk diskon langganan.',
   howToSubscribe: 'Cara Berlangganan',
   subscribeInstructions: 'Klik "Minta Upgrade" atau "Minta Paket" untuk mengirimkan permintaan langganan Anda. Administrator akan meninjau dan mengaktifkan langganan Anda. Untuk aktivasi langsung, silakan hubungi dukungan langsung.',

@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Activity, Gauge, Plus, UserPlus, Users } from 'lucide-react';
+import { Activity, Coins, Plus, UserPlus, Users } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard';
 import { ChildCard } from '@/components/dashboard/ChildCard';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/hooks/useTranslation';
-import { apiClient, Child, ApiResponse } from '@/lib/api';
+import { apiClient, AITokenWalletSummary, Child, ApiResponse } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 
 function formatChildAge(
@@ -29,6 +29,7 @@ export function ChildrenPageContent() {
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [children, setChildren] = useState<Child[]>([]);
+  const [tokenWallet, setTokenWallet] = useState<AITokenWalletSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -43,9 +44,40 @@ export function ChildrenPageContent() {
     try {
       setLoading(true);
       setError('');
-      const response = await apiClient.get<ApiResponse<Child[]>>('/children');
-      if (response.data.success) {
-        setChildren(response.data.data || []);
+
+      const [childrenRes, walletRes] = await Promise.all([
+        apiClient.get<ApiResponse<Child[]>>('/children'),
+        apiClient.get<
+          ApiResponse<
+            AITokenWalletSummary & {
+              monthly_token_limit: number;
+              current_token_usage: number;
+              tokens_remaining: number;
+            }
+          >
+        >('/ai-tokens/wallet').catch(() => null),
+      ]);
+
+      if (childrenRes.data.success) {
+        setChildren(childrenRes.data.data || []);
+      }
+
+      if (walletRes?.data.success && walletRes.data.data) {
+        const wallet = walletRes.data.data;
+        const limit = wallet.plan_monthly_token_limit ?? wallet.monthly_token_limit;
+        setTokenWallet({
+          monthly_token_limit: limit,
+          current_token_usage: wallet.current_token_usage,
+          tokens_remaining: wallet.tokens_remaining,
+          plan_type: wallet.plan_type,
+          plan_monthly_token_limit: wallet.plan_monthly_token_limit,
+        });
+      } else {
+        setTokenWallet({
+          monthly_token_limit: 0,
+          current_token_usage: 0,
+          tokens_remaining: 0,
+        });
       }
     } catch (err: unknown) {
       const message =
@@ -60,8 +92,10 @@ export function ChildrenPageContent() {
 
   if (!user) return null;
 
-  const totalSessionsUsed = children.reduce((sum, c) => sum + c.used_sessions, 0);
-  const totalQuota = children.reduce((sum, c) => sum + c.monthly_quota, 0);
+  const tokenUsed = tokenWallet?.current_token_usage ?? 0;
+  const tokenLimit = tokenWallet?.monthly_token_limit ?? 0;
+  const tokenPercent =
+    tokenLimit > 0 ? Math.min(100, Math.round((tokenUsed / tokenLimit) * 100)) : 0;
   const canAddChild = user.role === 'parent';
 
   return (
@@ -137,16 +171,16 @@ export function ChildrenPageContent() {
                   accent="teal"
                 />
                 <DashboardStatCard
-                  value={totalSessionsUsed}
-                  label={t('usedSessions')}
-                  icon={Activity}
-                  accent="navy"
+                  value={`${tokenUsed.toLocaleString('id-ID')} / ${tokenLimit.toLocaleString('id-ID')}`}
+                  label={t('tokenLabel')}
+                  icon={Coins}
+                  accent="gold"
                 />
                 <DashboardStatCard
-                  value={totalQuota > 0 ? `${Math.round((totalSessionsUsed / totalQuota) * 100)}%` : '0%'}
-                  label={t('quotaLabel')}
-                  icon={Gauge}
-                  accent="gold"
+                  value={tokenLimit > 0 ? `${tokenPercent}%` : '0%'}
+                  label={t('tokenUtilization')}
+                  icon={Activity}
+                  accent="navy"
                 />
               </div>
             </section>
@@ -167,8 +201,9 @@ export function ChildrenPageContent() {
                     child={child}
                     ageLabel={formatChildAge(child.birthdate, t('age'), t('nA'), t('years'))}
                     diagnosisLabel={t('noDiagnosis')}
-                    quotaLabel={t('quotaLabel')}
-                    sessionsLabel={t('sessionsLabel')}
+                    tokenLabel={t('tokenLabel')}
+                    tokenUsed={tokenUsed}
+                    tokenLimit={tokenLimit}
                   />
                 ))}
               </div>

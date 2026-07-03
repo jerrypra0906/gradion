@@ -383,6 +383,7 @@ export async function authRoutes(
           },
         });
         await provisionNewUserTrialSubscription(user.id);
+        await userService.ensureReferralCode(user.id);
       } else {
         const updates: Record<string, unknown> = {};
         if (!user.google_id) {
@@ -397,6 +398,10 @@ export async function authRoutes(
             where: { id: user.id },
             data: updates,
           });
+        }
+
+        if (!user.referral_code) {
+          await userService.ensureReferralCode(user.id);
         }
       }
 
@@ -437,7 +442,7 @@ export async function authRoutes(
     fastify.log.info({ email: (request.body as any)?.email }, 'Forgot password route called');
     try {
       const body = forgotPasswordSchema.parse(request.body);
-      await passwordResetService.requestPasswordReset(body.email);
+      await passwordResetService.requestPasswordReset(body.email.trim().toLowerCase());
 
       // Always return success message (security best practice - don't reveal if email exists)
       return {

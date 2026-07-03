@@ -104,7 +104,7 @@ export default function SubscriptionPlansPage() {
         await fetchPlans();
         setEditingPlan(null);
         setEditForm({});
-        alert('Plan updated successfully!');
+        alert(response.data.message || 'Plan updated successfully!');
       }
     } catch (error: any) {
       console.error('Failed to update plan:', error);
@@ -159,7 +159,10 @@ export default function SubscriptionPlansPage() {
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Subscription Plans</h1>
-          <p className="mt-2 text-gray-600">Manage subscription plan configurations</p>
+          <p className="mt-2 text-gray-600">
+            Manage subscription plan configurations. Monthly token limits apply to all active and
+            trial users on each plan and sync to their wallets when saved.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -91,6 +91,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+  message?: string;
   pagination?: {
     page: number;
     limit: number;
@@ -122,6 +123,37 @@ export interface User {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface AITokenWalletSummary {
+  monthly_token_limit: number;
+  current_token_usage: number;
+  tokens_remaining: number;
+  plan_type?: string;
+  subscription_status?: string;
+  plan_monthly_token_limit?: number;
+}
+
+export interface AITokenOperationEstimate {
+  preCheck: number;
+  label: string;
+}
+
+export interface AITokenInfo {
+  wallet: AITokenWalletSummary & Record<string, unknown>;
+  planConfig: {
+    planType: string;
+    status: string;
+    monthlyTokenLimit: number;
+    aiAccess: boolean;
+    isTrial: boolean;
+  };
+  operationEstimates: {
+    initialAssessment: AITokenOperationEstimate;
+    weeklyAbaProgram: AITokenOperationEstimate;
+    weeklyProgramTranslate: AITokenOperationEstimate;
+    therapyNotesOcr: AITokenOperationEstimate;
+  };
 }
 
 export interface Child {

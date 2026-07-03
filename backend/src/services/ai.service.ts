@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
-import { getPlanConfig, expireTrialIfNeeded, getTrialTokenLimit } from '../lib/subscription.js';
+import { getPlanConfig, expireTrialIfNeeded, ensureAITokenWallet } from '../lib/subscription.js';
 import type { SubscriptionPlan } from '@prisma/client';
 
 let openaiClient: OpenAI | null = null;
@@ -518,66 +518,7 @@ export async function checkTokenQuota(
   reason?: string;
 }> {
   try {
-    let wallet = await prisma.aITokenWallet.findUnique({
-      where: { user_id: userId },
-    });
-
-    // Create wallet if it doesn't exist
-    if (!wallet) {
-      const subscription = await prisma.subscription.findUnique({
-        where: { user_id: userId },
-      });
-
-      const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-      const planConfig = await getPlanConfig(planType);
-      const isTrial = subscription?.status === 'trial';
-      const renewalDate =
-        isTrial && subscription?.end_date
-          ? subscription.end_date
-          : (() => {
-              const d = new Date();
-              d.setMonth(d.getMonth() + 1);
-              return d;
-            })();
-
-      wallet = await prisma.aITokenWallet.create({
-        data: {
-          user_id: userId,
-          plan_type: planType,
-          monthly_token_limit: isTrial ? getTrialTokenLimit() : planConfig.monthlyTokenLimit,
-          renewal_date: renewalDate,
-        },
-      });
-    }
-
-    const subscription = await prisma.subscription.findUnique({
-      where: { user_id: userId },
-    });
-    const isTrial = subscription?.status === 'trial';
-
-    // Check if renewal is needed (trial uses a fixed pool until end_date — no monthly reset)
-    const now = new Date();
-    if (!isTrial && wallet.renewal_date <= now) {
-      const subscription = await prisma.subscription.findUnique({
-        where: { user_id: userId },
-      });
-
-      const planType = (subscription?.plan_type || 'free') as SubscriptionPlan;
-      const planConfig = await getPlanConfig(planType);
-      const newRenewalDate = new Date(now);
-      newRenewalDate.setMonth(newRenewalDate.getMonth() + 1);
-
-      wallet = await prisma.aITokenWallet.update({
-        where: { id: wallet.id },
-        data: {
-          current_token_usage: 0,
-          monthly_token_limit: planConfig.monthlyTokenLimit,
-          renewal_date: newRenewalDate,
-          last_reset_date: now,
-        },
-      });
-    }
-
+    const { wallet } = await ensureAITokenWallet(userId);
     const tokensRemaining = wallet.monthly_token_limit - wallet.current_token_usage;
 
     if (tokensRemaining < tokensNeeded) {
