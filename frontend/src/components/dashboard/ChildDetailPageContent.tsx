@@ -131,6 +131,18 @@ export function ChildDetailPageContent() {
   const abaLocaleSyncInFlightRef = useRef(false);
   const abaAutoGenAttemptedRef = useRef(false);
   const [abaStartProgramId, setAbaStartProgramId] = useState<string | null>(null);
+  // Behavior (OBS 1) editing — only while no assessment/ABA program exists yet.
+  const [editingBehaviors, setEditingBehaviors] = useState(false);
+  const [behaviorDraft, setBehaviorDraft] = useState<
+    Record<string, { f: number; s: number; label?: string | null }>
+  >({});
+  const [behaviorSaving, setBehaviorSaving] = useState(false);
+  const [behaviorError, setBehaviorError] = useState('');
+  const [behaviorSaved, setBehaviorSaved] = useState(false);
+  // Delete / deactivate / reactivate
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const currentWeekStart = useMemo(() => mondayWeekStartYmd(new Date()), []);
   const nextWeekStart = useMemo(() => addDaysYmd(currentWeekStart, 7), [currentWeekStart]);
@@ -469,6 +481,101 @@ export function ChildDetailPageContent() {
     }
   };
 
+  const BEHAVIOR_EDIT_ROWS: Array<{ key: string; label: string; hasLabel?: boolean }> = [
+    { key: 'tantrums', label: t('checklistTantrums') },
+    { key: 'self_abuse', label: t('checklistSelfAbuse') },
+    { key: 'aggression', label: t('checklistAggression') },
+    { key: 'self_stim', label: t('checklistSelfStim') },
+    { key: 'other_major_1', label: `${t('checklistOtherMajorDisruptive')} 1`, hasLabel: true },
+    { key: 'other_major_2', label: `${t('checklistOtherMajorDisruptive')} 2`, hasLabel: true },
+    { key: 'leaves_work_area', label: t('checklistLeavesWorkArea') },
+    { key: 'hands_feet_restless', label: t('checklistHandsFeetRestless') },
+  ];
+
+  const startEditBehaviors = () => {
+    const behaviors = (child?.initial_observation as any)?.obs1?.behaviors || {};
+    const draft: Record<string, { f: number; s: number; label?: string | null }> = {};
+    for (const row of BEHAVIOR_EDIT_ROWS) {
+      const entry = behaviors[row.key] || {};
+      draft[row.key] = {
+        f: Number.isFinite(entry.f) ? clamp(Number(entry.f), 0, 5) : 0,
+        s: Number.isFinite(entry.s) ? clamp(Number(entry.s), 0, 5) : 0,
+        ...(row.hasLabel ? { label: entry.label ?? null } : {}),
+      };
+    }
+    setBehaviorDraft(draft);
+    setBehaviorError('');
+    setBehaviorSaved(false);
+    setEditingBehaviors(true);
+  };
+
+  const handleSaveBehaviors = async () => {
+    if (!child || behaviorSaving) return;
+    try {
+      setBehaviorSaving(true);
+      setBehaviorError('');
+      const response = await apiClient.put<ApiResponse<Child>>(
+        `/children/${child.id}/initial-observation/behaviors`,
+        { behaviors: behaviorDraft }
+      );
+      if (response.data.success && response.data.data) {
+        setChild(response.data.data);
+        setEditingBehaviors(false);
+        setBehaviorSaved(true);
+      } else {
+        setBehaviorError(response.data.error || 'Failed to save behaviors');
+      }
+    } catch (err: any) {
+      setBehaviorError(err.response?.data?.error || 'Failed to save behaviors');
+    } finally {
+      setBehaviorSaving(false);
+    }
+  };
+
+  const handleDeleteChild = async () => {
+    if (!child || deleteBusy) return;
+    try {
+      setDeleteBusy(true);
+      setDeleteError('');
+      const response = await apiClient.delete<ApiResponse<unknown>>(`/children/${child.id}`);
+      if (response.data.success) {
+        if (user?.role === 'admin') {
+          setDeleteConfirmOpen(false);
+          await fetchChild();
+        } else {
+          router.push('/dashboard/children');
+        }
+      } else {
+        setDeleteError(response.data.error || 'Failed to delete child');
+      }
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.error || 'Failed to delete child');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const handleReactivateChild = async () => {
+    if (!child || deleteBusy) return;
+    try {
+      setDeleteBusy(true);
+      setDeleteError('');
+      const response = await apiClient.post<ApiResponse<Child>>(
+        `/children/${child.id}/reactivate`,
+        {}
+      );
+      if (response.data.success) {
+        await fetchChild();
+      } else {
+        setDeleteError(response.data.error || 'Failed to reactivate child');
+      }
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.error || 'Failed to reactivate child');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
   const sanitizeAssessmentMd = (md: string) => {
     // Some generated reports may include a "Prepared by ..." line. Hide it in the UI.
     const lines = md.split('\n');
@@ -529,12 +636,14 @@ export function ChildDetailPageContent() {
       { label: t('checklistAggression'), ...(behaviors.aggression || {}) },
       { label: t('checklistSelfStim'), ...(behaviors.self_stim || {}) },
       {
-        label: `${t('checklistOtherMajorDisruptive')}: ${behaviors.other_major_1?.label || '—'}`,
+        // Spread first: the stored entry carries its own `label` (the parent's
+        // free text or null) which must not blank out the row title.
         ...(behaviors.other_major_1 || {}),
+        label: `${t('checklistOtherMajorDisruptive')} 1: ${behaviors.other_major_1?.label || '—'}`,
       },
       {
-        label: `${t('checklistOtherMajorDisruptive')}: ${behaviors.other_major_2?.label || '—'}`,
         ...(behaviors.other_major_2 || {}),
+        label: `${t('checklistOtherMajorDisruptive')} 2: ${behaviors.other_major_2?.label || '—'}`,
       },
       { label: t('checklistLeavesWorkArea'), ...(behaviors.leaves_work_area || {}) },
       { label: t('checklistHandsFeetRestless'), ...(behaviors.hands_feet_restless || {}) },
@@ -569,20 +678,20 @@ export function ChildDetailPageContent() {
 
     const fsCell = (value: any) => {
       const has = Number.isFinite(value);
-      const v = has ? clamp(Number(value), 1, 5) : 1;
-      const color = sliderColorGreenToRed(v, 1, 5);
+      const v = has ? clamp(Number(value), 0, 5) : 0;
+      const color = sliderColorGreenToRed(v, 0, 5);
       return (
         <div className="min-w-[72px]">
           <div className="text-sm font-medium text-[#1A2B4C]">{has ? v : '—'}</div>
           <input
             type="range"
-            min={1}
+            min={0}
             max={5}
             step={1}
             disabled
             value={v}
             className="w-full cursor-default accent-[#00C1B2]"
-            style={rangeTrackStyle(v, 1, 5, color)}
+            style={rangeTrackStyle(v, 0, 5, color)}
           />
         </div>
       );
@@ -591,27 +700,127 @@ export function ChildDetailPageContent() {
     return (
       <div className="space-y-5">
         <div className="overflow-hidden rounded-2xl border border-[#E5E8EB] bg-white">
-          <div className="border-b border-[#E5E8EB] bg-[#FDF8F1]/50 px-4 py-3">
-            <h3 className="text-sm font-bold text-[#1A2B4C]">{t('checklistBehaviorObs1')}</h3>
-            <p className="text-xs text-[#1A2B4C]/60">{t('checklistFsHint')}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E5E8EB] bg-[#FDF8F1]/50 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#1A2B4C]">{t('checklistBehaviorObs1')}</h3>
+              <p className="text-xs text-[#1A2B4C]/60">{t('checklistFsHint')}</p>
+            </div>
+            {canEditBehaviors && !editingBehaviors && (
+              <Button size="sm" variant="outline" onClick={startEditBehaviors}>
+                {language === 'id' ? 'Ubah nilai' : 'Edit values'}
+              </Button>
+            )}
           </div>
-          <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-            {rows.map((r) => (
-              <div key={r.label} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-3">
-                <div className="mb-2 text-sm font-medium text-[#1A2B4C]">{r.label}</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistFrequencyCol')}</div>
-                    {fsCell(r.f)}
-                  </div>
-                  <div>
-                    <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistSeverityCol')}</div>
-                    {fsCell(r.s)}
+
+          {behaviorSaved && !editingBehaviors && (
+            <div className="mx-4 mt-3 rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-3 py-2 text-sm text-[#1A2B4C]">
+              {language === 'id' ? 'Nilai perilaku berhasil disimpan.' : 'Behavior values saved.'}
+            </div>
+          )}
+
+          {editingBehaviors ? (
+            <div className="space-y-3 p-4">
+              {behaviorError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {behaviorError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {BEHAVIOR_EDIT_ROWS.map((row) => {
+                  const entry = behaviorDraft[row.key] || { f: 0, s: 0 };
+                  return (
+                    <div key={row.key} className="rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/5 p-3">
+                      <div className="mb-2 text-sm font-medium text-[#1A2B4C]">{row.label}</div>
+                      {row.hasLabel && (
+                        <input
+                          type="text"
+                          value={entry.label ?? ''}
+                          placeholder={language === 'id' ? 'Isi perilaku…' : 'Specify behavior…'}
+                          onChange={(e) =>
+                            setBehaviorDraft((prev) => ({
+                              ...prev,
+                              [row.key]: { ...entry, label: e.target.value || null },
+                            }))
+                          }
+                          className="mb-2 w-full rounded-lg border border-[#E5E8EB] bg-white px-3 py-1.5 text-sm text-[#1A2B4C] placeholder:text-[#1A2B4C]/35 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+                        />
+                      )}
+                      <div className="grid grid-cols-2 gap-3">
+                        {(['f', 's'] as const).map((side) => (
+                          <div key={side}>
+                            <div className="mb-1 text-xs text-[#1A2B4C]/60">
+                              {side === 'f' ? t('checklistFrequencyCol') : t('checklistSeverityCol')}
+                            </div>
+                            <div className="text-sm font-medium text-[#1A2B4C]">{entry[side]}</div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={5}
+                              step={1}
+                              value={entry[side]}
+                              onChange={(e) =>
+                                setBehaviorDraft((prev) => ({
+                                  ...prev,
+                                  [row.key]: { ...entry, [side]: Number(e.target.value) },
+                                }))
+                              }
+                              className="w-full accent-[#00C1B2]"
+                              style={rangeTrackStyle(
+                                entry[side],
+                                0,
+                                5,
+                                sliderColorGreenToRed(entry[side], 0, 5),
+                              )}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={behaviorSaving}
+                  onClick={() => {
+                    setEditingBehaviors(false);
+                    setBehaviorError('');
+                  }}
+                >
+                  {t('cancel')}
+                </Button>
+                <Button size="sm" variant="brand" disabled={behaviorSaving} onClick={handleSaveBehaviors}>
+                  {behaviorSaving
+                    ? language === 'id'
+                      ? 'Menyimpan…'
+                      : 'Saving…'
+                    : language === 'id'
+                      ? 'Simpan nilai'
+                      : 'Save values'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+              {rows.map((r) => (
+                <div key={r.label} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-3">
+                  <div className="mb-2 text-sm font-medium text-[#1A2B4C]">{r.label}</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistFrequencyCol')}</div>
+                      {fsCell(r.f)}
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistSeverityCol')}</div>
+                      {fsCell(r.s)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -703,9 +912,25 @@ export function ChildDetailPageContent() {
   const hasAssessmentForAba =
     Boolean(assessmentForLanguage) || Boolean(child.has_pending_assessment);
   const englishAssessment = child.initial_assessment_report;
-  // Parents only see AI content after an admin approves it.
-  const isParentViewer = user.role === 'parent';
-  const assessmentPending = isParentViewer && Boolean(child.has_pending_assessment);
+  // AI content is hidden until approved. Admins get the same gated view as
+  // parents here — they review content in the AI Content Review page.
+  const isGatedViewer = user.role === 'parent' || user.role === 'admin';
+  const assessmentPending = isGatedViewer && Boolean(child.has_pending_assessment);
+  // Behavior (OBS 1) stays editable until APPROVED AI content exists —
+  // empty or still-pending assessments/programs don't lock it.
+  const hasApprovedAssessment = Boolean(
+    (child.initial_assessment_report || child.initial_assessment_report_id) &&
+      child.assessment_review_status === 'approved',
+  );
+  const hasApprovedAbaWeek = abaWeeks.some((w) => w.review_status === 'approved');
+  const canEditBehaviors =
+    (user.role === 'parent' || user.role === 'admin') &&
+    !hasApprovedAssessment &&
+    !hasApprovedAbaWeek &&
+    Boolean((child.initial_observation as any)?.obs1);
+  const isChildInactive = child.is_active === false;
+  const canDeleteChild =
+    (user.role === 'parent' || user.role === 'admin') && !isChildInactive;
 
   // (moved above) current week memo + ABA auto-translate effect
 
@@ -734,7 +959,37 @@ export function ChildDetailPageContent() {
           }
         />
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {isChildInactive && (
+          <div className="flex flex-col gap-3 rounded-xl border border-[#FFB900]/40 bg-[#FFB900]/10 px-4 py-3 text-sm text-[#1A2B4C] sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {language === 'id'
+                ? 'Profil anak ini nonaktif (dihapus oleh orang tua atau admin). Orang tua tidak lagi melihat profil ini.'
+                : 'This child profile is deactivated (deleted by the parent or an admin). The parent no longer sees it.'}
+              {child.deactivated_at
+                ? ` · ${new Date(child.deactivated_at).toLocaleString()}`
+                : ''}
+            </span>
+            {user.role === 'admin' && (
+              <Button size="sm" variant="brand" disabled={deleteBusy} onClick={handleReactivateChild}>
+                {deleteBusy
+                  ? language === 'id'
+                    ? 'Memproses…'
+                    : 'Working…'
+                  : language === 'id'
+                    ? 'Aktifkan kembali'
+                    : 'Reactivate'}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {deleteError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {deleteError}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <DashboardStatCard
             value={`${formatHours(weeklyHoursExecuted)}/${child.monthly_quota}h`}
             label={language === 'id' ? 'Jam sesi minggu ini' : 'Hours this week'}
@@ -752,6 +1007,12 @@ export function ChildDetailPageContent() {
             label={t('activityLogHistory')}
             icon={ClipboardList}
             accent="gold"
+          />
+          <DashboardStatCard
+            value={(child.ai_tokens_used ?? 0).toLocaleString('id-ID')}
+            label={language === 'id' ? 'Token AI anak ini' : 'AI tokens (this child)'}
+            icon={Sparkles}
+            accent="teal"
           />
         </div>
 
@@ -911,7 +1172,7 @@ export function ChildDetailPageContent() {
               <p className="text-sm text-[#1A2B4C]/60">{t('abaProgramNoWeekYet')}</p>
             )}
 
-            {currentWeekRow && isParentViewer && currentWeekRow.review_status !== 'approved' && (
+            {currentWeekRow && isGatedViewer && currentWeekRow.review_status !== 'approved' && (
               <div className="rounded-xl border border-[#FFB900]/30 bg-[#FFB900]/10 p-4 text-sm text-[#1A2B4C]">
                 {language === 'id'
                   ? 'Program mingguan ini sedang menunggu peninjauan admin. Program akan terlihat setelah disetujui.'
@@ -919,7 +1180,7 @@ export function ChildDetailPageContent() {
               </div>
             )}
 
-            {currentWeekRow && !(isParentViewer && currentWeekRow.review_status !== 'approved') && (
+            {currentWeekRow && !(isGatedViewer && currentWeekRow.review_status !== 'approved') && (
               <div className="space-y-3 rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/30 p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm font-semibold text-[#1A2B4C]">
@@ -1188,6 +1449,63 @@ export function ChildDetailPageContent() {
               </div>
             )}
         </DashboardCollapsibleSection>
+
+        {canDeleteChild && (
+          <div className="rounded-2xl border border-red-200 bg-white p-5 shadow-sm shadow-[#1A2B4C]/5">
+            <h3 className="font-montserrat text-sm font-bold text-red-600">
+              {language === 'id' ? 'Hapus profil anak' : 'Delete child profile'}
+            </h3>
+            <p className="mt-1 text-sm text-[#1A2B4C]/65">
+              {user.role === 'admin'
+                ? language === 'id'
+                  ? 'Profil akan ditandai nonaktif dan hilang dari tampilan orang tua. Admin dapat mengaktifkannya kembali kapan saja.'
+                  : 'The profile will be flagged as deactivated and disappear from the parent’s view. An admin can reactivate it at any time.'
+                : language === 'id'
+                  ? 'Profil anak akan dihapus dari akun Anda. Hubungi admin jika suatu saat Anda ingin memulihkannya.'
+                  : 'The child profile will be removed from your account. Contact an admin if you ever need it restored.'}
+            </p>
+            {!deleteConfirmOpen ? (
+              <div className="mt-4">
+                <Button variant="danger" size="sm" onClick={() => setDeleteConfirmOpen(true)}>
+                  {user.role === 'admin'
+                    ? language === 'id'
+                      ? 'Nonaktifkan anak'
+                      : 'Deactivate child'
+                    : language === 'id'
+                      ? 'Hapus anak'
+                      : 'Delete child'}
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-medium text-red-700">
+                  {language === 'id'
+                    ? `Yakin ingin menghapus profil ${child.name}? Tindakan ini menyembunyikan seluruh data anak dari tampilan Anda.`
+                    : `Are you sure you want to delete ${child.name}'s profile? This hides all of the child's data from your view.`}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="danger" size="sm" disabled={deleteBusy} onClick={handleDeleteChild}>
+                    {deleteBusy
+                      ? language === 'id'
+                        ? 'Menghapus…'
+                        : 'Deleting…'
+                      : language === 'id'
+                        ? 'Ya, hapus'
+                        : 'Yes, delete'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={deleteBusy}
+                    onClick={() => setDeleteConfirmOpen(false)}
+                  >
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

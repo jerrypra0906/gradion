@@ -5,6 +5,7 @@ import {
   IOSection,
   IOTemplateJson,
   ObsFlatFormState,
+  isFieldRequiredNow,
   labelForField,
   titleForSection,
 } from '@/lib/initialObservationTemplate';
@@ -45,6 +46,21 @@ type Props = {
   obsIndex: number;
 };
 
+function RequiredMark({ required, language }: { required: boolean; language: 'en' | 'id' }) {
+  if (required) {
+    return (
+      <span className="ml-0.5 font-semibold text-red-500" title={language === 'id' ? 'Wajib diisi' : 'Mandatory'}>
+        *
+      </span>
+    );
+  }
+  return (
+    <span className="ml-1.5 text-xs font-normal text-[#1A2B4C]/45">
+      {language === 'id' ? '(Opsional)' : '(Optional)'}
+    </span>
+  );
+}
+
 function FsField({
   field,
   language,
@@ -58,12 +74,16 @@ function FsField({
 }) {
   const fKey = `${field.key}_f`;
   const sKey = `${field.key}_s`;
-  const fVal = String(obs[fKey] ?? '').trim() === '' ? 1 : Number(obs[fKey]);
-  const sVal = String(obs[sKey] ?? '').trim() === '' ? 1 : Number(obs[sKey]);
+  const fVal = String(obs[fKey] ?? '').trim() === '' ? 0 : Number(obs[fKey]);
+  const sVal = String(obs[sKey] ?? '').trim() === '' ? 0 : Number(obs[sKey]);
+  const requiredNow = isFieldRequiredNow(field, obs);
 
   return (
     <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
-      <div className="mb-3 text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</div>
+      <div className="mb-3 text-sm font-medium text-[#1A2B4C]">
+        {labelForField(field, language)}
+        <RequiredMark required={requiredNow} language={language} />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         {(['f', 's'] as const).map((side) => {
           const key = side === 'f' ? fKey : sKey;
@@ -75,16 +95,16 @@ function FsField({
               </label>
               <input
                 type="range"
-                min={1}
+                min={0}
                 max={5}
                 step={1}
                 value={val}
                 onChange={(e) => onChange({ ...obs, [key]: e.target.value })}
                 className="w-full accent-[#00C1B2]"
-                style={rangeTrackStyle(val, 1, 5, sliderColorGreenToRed(val, 1, 5))}
+                style={rangeTrackStyle(val, 0, 5, sliderColorGreenToRed(val, 0, 5))}
               />
               <div className="mt-1 text-xs font-medium text-[#1A2B4C]/70">
-                {String(obs[key] ?? '').trim() === '' ? '—' : obs[key]}
+                {String(obs[key] ?? '').trim() === '' ? '0' : obs[key]}
               </div>
             </div>
           );
@@ -108,7 +128,10 @@ function PercentField({
   const val = String(obs[field.key] ?? '').trim() === '' ? 0 : Number(obs[field.key]);
   return (
     <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
-      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
+      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">
+        {labelForField(field, language)}
+        <RequiredMark required={isFieldRequiredNow(field, obs)} language={language} />
+      </label>
       <input
         type="range"
         min={0}
@@ -120,7 +143,11 @@ function PercentField({
         style={rangeTrackStyle(val, 0, 100, sliderColorRedToGreen(val, 0, 100))}
       />
       <div className="mt-1 text-xs font-medium text-[#1A2B4C]/70">
-        {String(obs[field.key] ?? '').trim() === '' ? '—' : `${obs[field.key]}%`}
+        {String(obs[field.key] ?? '').trim() === ''
+          ? language === 'id'
+            ? 'Belum diisi — geser untuk mengisi'
+            : 'Not set — move the slider to fill'
+          : `${obs[field.key]}%`}
       </div>
     </div>
   );
@@ -141,7 +168,10 @@ function renderField(
   if (field.type === 'number_minutes') {
     return (
       <div key={field.key} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4">
-        <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
+        <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">
+          {labelForField(field, language)}
+          <RequiredMark required={isFieldRequiredNow(field, obs)} language={language} />
+        </label>
         <input
           type="number"
           min={0}
@@ -154,7 +184,10 @@ function renderField(
   }
   return (
     <div key={field.key} className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-4 md:col-span-2">
-      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">{labelForField(field, language)}</label>
+      <label className="mb-1 block text-sm font-medium text-[#1A2B4C]">
+        {labelForField(field, language)}
+        <RequiredMark required={isFieldRequiredNow(field, obs)} language={language} />
+      </label>
       <input
         type="text"
         value={obs[field.key] ?? ''}
@@ -189,6 +222,12 @@ function renderSection(
 export function InitialObservationForm({ template, language, obs, onChange, obsIndex }: Props) {
   return (
     <div className="space-y-6">
+      <p className="text-xs text-[#1A2B4C]/60">
+        <span className="font-semibold text-red-500">*</span>{' '}
+        {language === 'id'
+          ? 'wajib diisi · kolom lain bertanda (Opsional)'
+          : 'mandatory · other fields are marked (Optional)'}
+      </p>
       {template.sections.map((section) => renderSection(section, language, obs, onChange, obsIndex))}
     </div>
   );

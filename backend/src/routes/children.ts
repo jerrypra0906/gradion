@@ -122,9 +122,9 @@ export async function childrenRoutes(
 
       let children;
       if (user.role === 'parent') {
-        // Parents see their own children
+        // Parents see their own children (deleted/deactivated ones are hidden entirely)
         children = await prisma.child.findMany({
-          where: { parent_id: user.id },
+          where: { parent_id: user.id, is_active: true },
           include: {
             parent: {
               select: {
@@ -142,6 +142,7 @@ export async function childrenRoutes(
         // Therapists and consultants see assigned children
         children = await prisma.child.findMany({
           where: {
+            is_active: true,
             therapistMap: {
               some: {
                 therapist_id: user.id,
@@ -185,9 +186,26 @@ export async function childrenRoutes(
         };
       }
 
+      // Attach each child's AI token consumption from the usage ledger so the
+      // UI can report utilization per child (the wallet is per parent).
+      const childIds = children.map((c) => c.id);
+      const usage = childIds.length
+        ? await prisma.aITokenUsageLog.groupBy({
+            by: ['child_id'],
+            where: { child_id: { in: childIds } },
+            _sum: { tokens: true },
+          })
+        : [];
+      const usageByChild = new Map(
+        usage.map((u) => [u.child_id, u._sum.tokens ?? 0])
+      );
+
       return {
         success: true,
-        data: children,
+        data: children.map((c) => ({
+          ...c,
+          ai_tokens_used: usageByChild.get(c.id) ?? 0,
+        })),
       };
     }
   );
@@ -225,7 +243,7 @@ export async function childrenRoutes(
         },
       });
 
-      if (!child) {
+      if (!child || (!child.is_active && user.role !== 'admin')) {
         reply.code(404);
         return {
           success: false,
@@ -266,21 +284,28 @@ export async function childrenRoutes(
           email: m.therapist.email,
         })) ?? [];
 
-      // Parents only see the AI Initial Assessment once an admin approves it.
+      // The AI Initial Assessment stays hidden until an admin approves it.
+      // Admins get the same gated view here as parents — they review and edit
+      // the content in the dedicated AI Content Review page instead.
       const hasReport = Boolean(child.initial_assessment_report || child.initial_assessment_report_id);
-      const parentPending = user.role === 'parent' && child.assessment_review_status !== 'approved';
-      const gatedChild = parentPending
+      const isGatedViewer = user.role === 'parent' || user.role === 'admin';
+      const gatePending = isGatedViewer && child.assessment_review_status !== 'approved';
+      const gatedChild = gatePending
         ? {
             ...child,
             initial_assessment_report: null,
             initial_assessment_report_id: null,
-            // Tells the parent UI a report exists but is awaiting admin review.
+            // Tells the UI a report exists but is awaiting admin review.
             has_pending_assessment: hasReport,
           }
         : { ...child, has_pending_assessment: false };
 
       await syncMissingParentLogsForChild(childId);
       const weekly_hours_executed = await computeWeeklyExecutedHours(childId);
+      const tokenUsage = await prisma.aITokenUsageLog.aggregate({
+        where: { child_id: childId },
+        _sum: { tokens: true },
+      });
 
       return {
         success: true,
@@ -288,6 +313,7 @@ export async function childrenRoutes(
           ...gatedChild,
           therapists,
           weekly_hours_executed,
+          ai_tokens_used: tokenUsage._sum.tokens ?? 0,
         },
       };
     }
@@ -405,7 +431,10 @@ export async function childrenRoutes(
         tokensUsed = generated.tokensUsed;
       }
 
-      await updateTokenUsage(billingUserId, tokensUsed);
+      await updateTokenUsage(billingUserId, tokensUsed, {
+        childId,
+        feature: lang === 'id' && mode === 'translate' ? 'assessment_translation' : 'initial_assessment',
+      });
 
       const updated = await prisma.child.update({
         where: { id: childId },
@@ -423,9 +452,10 @@ export async function childrenRoutes(
         },
       });
 
-      // Hide the freshly generated content from the parent until an admin approves it.
+      // Hide the freshly generated content until an admin approves it in the
+      // AI Content Review page. Admins get the same gated view as parents.
       const gatedUpdated =
-        user.role === 'parent'
+        user.role === 'parent' || user.role === 'admin'
           ? {
               ...updated,
               initial_assessment_report: null,
@@ -477,37 +507,86 @@ export async function childrenRoutes(
         ? (request.body as any).parent_id
         : user.id;
 
+      const trimmedName = body.name.trim();
+
+      // Idempotency guard: double clicks or client retries after a slow response
+      // resubmit the same payload. The advisory lock serializes concurrent
+      // submissions for the same parent+name, so the duplicate check cannot
+      // race with the insert; retries get the already-created child back.
       let child;
+      let deduplicated = false;
       try {
-        child = await prisma.child.create({
-          data: {
-            parent_id: parentId,
-            name: body.name,
-            birthdate: parseOptionalBirthdate(body.birthdate),
-            diagnosis: body.diagnosis || null,
-            monthly_quota: body.monthly_quota,
-            used_sessions: 0,
-            behaviors: body.behaviors?.trim() ? body.behaviors.trim() : null,
-            concerns: body.concerns?.trim() ? body.concerns.trim() : null,
-            environment: body.environment?.trim() ? body.environment.trim() : null,
-            initial_observation: body.initial_observation ?? undefined,
-          },
-          include: {
-            parent: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
+        const result = await prisma.$transaction(async (tx) => {
+          // ::text cast because the void return type cannot be deserialized by Prisma.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`child-create:${parentId}:${trimmedName}`}))::text AS locked`;
+
+          const recentDuplicate = await tx.child.findFirst({
+            where: {
+              parent_id: parentId,
+              name: trimmedName,
+              is_active: true,
+              created_at: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+            },
+            orderBy: { created_at: 'desc' },
+            include: {
+              parent: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
               },
             },
-          },
+          });
+          if (recentDuplicate) {
+            return { row: recentDuplicate, deduplicated: true };
+          }
+
+          const created = await tx.child.create({
+            data: {
+              parent_id: parentId,
+              name: trimmedName,
+              birthdate: parseOptionalBirthdate(body.birthdate),
+              diagnosis: body.diagnosis || null,
+              monthly_quota: body.monthly_quota,
+              used_sessions: 0,
+              behaviors: body.behaviors?.trim() ? body.behaviors.trim() : null,
+              concerns: body.concerns?.trim() ? body.concerns.trim() : null,
+              environment: body.environment?.trim() ? body.environment.trim() : null,
+              initial_observation: body.initial_observation ?? undefined,
+            },
+            include: {
+              parent: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          });
+          return { row: created, deduplicated: false };
         });
+        child = result.row;
+        deduplicated = result.deduplicated;
       } catch (error: any) {
         logger.error({ err: error, parentId }, 'Failed to create child');
         reply.code(500);
         return {
           success: false,
           error: 'Failed to create child. Please try again.',
+        };
+      }
+
+      if (deduplicated) {
+        logger.info(
+          { parentId, childId: child.id, name: trimmedName },
+          'Duplicate child creation detected — returning existing child'
+        );
+        return {
+          success: true,
+          data: child,
+          deduplicated: true,
         };
       }
 
@@ -548,7 +627,10 @@ export async function childrenRoutes(
               return;
             }
 
-            await updateTokenUsage(parentId, result.tokensUsed);
+            await updateTokenUsage(parentId, result.tokensUsed, {
+              childId,
+              feature: 'initial_assessment',
+            });
             await prisma.child.update({
               where: { id: childId },
               data:
@@ -644,6 +726,194 @@ export async function childrenRoutes(
         success: true,
         data: updatedChild,
       };
+    }
+  );
+
+  // Soft-delete child (parent owns it, or admin). Parent view: gone entirely.
+  // Admin view: flagged as deactivated and can be reactivated later.
+  fastify.delete(
+    '/:id',
+    { preHandler: [authenticate, requireRole('parent', 'admin')] },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const { id } = request.params as { id: string };
+      const childId = parseInt(id, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child ID' };
+      }
+
+      const child = await prisma.child.findUnique({ where: { id: childId } });
+      if (!child || (!child.is_active && user.role !== 'admin')) {
+        reply.code(404);
+        return { success: false, error: 'Child not found' };
+      }
+
+      if (user.role === 'parent' && child.parent_id !== user.id) {
+        reply.code(403);
+        return { success: false, error: 'Forbidden' };
+      }
+
+      if (!child.is_active) {
+        return { success: true, message: 'Child is already deactivated' };
+      }
+
+      await prisma.child.update({
+        where: { id: childId },
+        data: {
+          is_active: false,
+          deactivated_at: new Date(),
+          deactivated_by: user.id,
+        },
+      });
+
+      logger.info({ childId, userId: user.id, role: user.role }, 'Child deactivated');
+      return { success: true, message: 'Child deleted' };
+    }
+  );
+
+  // Reactivate a deactivated child (admin only, e.g. on parent request).
+  fastify.post(
+    '/:id/reactivate',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const { id } = request.params as { id: string };
+      const childId = parseInt(id, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child ID' };
+      }
+
+      const child = await prisma.child.findUnique({ where: { id: childId } });
+      if (!child) {
+        reply.code(404);
+        return { success: false, error: 'Child not found' };
+      }
+
+      if (child.is_active) {
+        return { success: true, message: 'Child is already active' };
+      }
+
+      const updated = await prisma.child.update({
+        where: { id: childId },
+        data: {
+          is_active: true,
+          deactivated_at: null,
+          deactivated_by: null,
+        },
+        include: {
+          parent: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      logger.info({ childId, adminId: user.id }, 'Child reactivated');
+      return { success: true, data: updated };
+    }
+  );
+
+  // Update the Behavior (OBS 1) values of the initial observation. Only allowed
+  // while the AI pipeline has not produced anything yet: no assessment report
+  // and no weekly ABA program. After that the observation is the immutable
+  // input that generated those artifacts.
+  fastify.put(
+    '/:id/initial-observation/behaviors',
+    { preHandler: [authenticate, requireRole('parent', 'admin')] },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const { id } = request.params as { id: string };
+      const childId = parseInt(id, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child ID' };
+      }
+
+      const behaviorEntrySchema = z.object({
+        f: z.coerce.number().min(0).max(5),
+        s: z.coerce.number().min(0).max(5),
+        label: z.string().max(500).nullable().optional(),
+      });
+      const bodySchema = z.object({
+        behaviors: z.record(z.string(), behaviorEntrySchema),
+      });
+
+      let body: z.infer<typeof bodySchema>;
+      try {
+        body = bodySchema.parse(request.body);
+      } catch {
+        reply.code(400);
+        return { success: false, error: 'Invalid behaviors payload' };
+      }
+
+      const child = await prisma.child.findUnique({ where: { id: childId } });
+      if (!child || (!child.is_active && user.role !== 'admin')) {
+        reply.code(404);
+        return { success: false, error: 'Child not found' };
+      }
+      if (user.role === 'parent' && child.parent_id !== user.id) {
+        reply.code(403);
+        return { success: false, error: 'Forbidden' };
+      }
+
+      // Editing stays open while nothing has been approved yet: an assessment
+      // or weekly program that is still pending (or rejected) in admin review
+      // does not lock the observation.
+      const hasApprovedAssessment =
+        Boolean(child.initial_assessment_report || child.initial_assessment_report_id) &&
+        child.assessment_review_status === 'approved';
+      const approvedWeekCount = await prisma.childAbaProgramWeek.count({
+        where: { child_id: childId, review_status: 'approved' },
+      });
+      if (hasApprovedAssessment || approvedWeekCount > 0) {
+        reply.code(409);
+        return {
+          success: false,
+          error:
+            'Behavior values can no longer be edited because an approved assessment report or weekly ABA program already exists for this child.',
+        };
+      }
+
+      const observation = (child.initial_observation as Record<string, any> | null) ?? {};
+      const obs1 = (observation.obs1 as Record<string, any> | undefined) ?? {};
+      const existingBehaviors = (obs1.behaviors as Record<string, any> | undefined) ?? {};
+
+      const ALLOWED_BEHAVIOR_KEYS = new Set([
+        'tantrums',
+        'self_abuse',
+        'aggression',
+        'self_stim',
+        'other_major_1',
+        'other_major_2',
+        'leaves_work_area',
+        'hands_feet_restless',
+      ]);
+
+      const nextBehaviors: Record<string, any> = { ...existingBehaviors };
+      for (const [key, entry] of Object.entries(body.behaviors)) {
+        if (!ALLOWED_BEHAVIOR_KEYS.has(key)) continue;
+        nextBehaviors[key] = {
+          ...(existingBehaviors[key] || {}),
+          f: entry.f,
+          s: entry.s,
+          ...(entry.label !== undefined ? { label: entry.label } : {}),
+        };
+      }
+
+      const updated = await prisma.child.update({
+        where: { id: childId },
+        data: {
+          initial_observation: {
+            ...observation,
+            obs1: { ...obs1, behaviors: nextBehaviors },
+          },
+        },
+        include: {
+          parent: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      logger.info({ childId, userId: user.id }, 'Initial observation behaviors updated');
+      return { success: true, data: updated };
     }
   );
 

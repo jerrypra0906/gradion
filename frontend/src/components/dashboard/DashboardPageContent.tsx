@@ -323,6 +323,13 @@ export function DashboardPageContent() {
                       {t('quotaLabel')}: {child.used_sessions}/{child.monthly_quota}{' '}
                       {t('sessionsLabel')}
                     </p>
+                    {user.role !== 'parent' && child.parent && (
+                      <p className="mt-0.5 truncate text-xs text-[#1A2B4C]/50">
+                        <span className="font-medium text-[#00A896]">Parent:</span>{' '}
+                        {child.parent.name}
+                        {child.parent.email ? ` · ${child.parent.email}` : ''}
+                      </p>
+                    )}
                   </div>
                   <div className="hidden shrink-0 text-sm text-[#1A2B4C]/45 sm:block">
                     {child.diagnosis || t('noDiagnosis')}

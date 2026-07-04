@@ -149,7 +149,10 @@ export async function generateAbaWeekForChild(input: {
     };
   }
 
-  await updateTokenUsage(input.userId, ai.tokensUsed);
+  await updateTokenUsage(input.userId, ai.tokensUsed, {
+    childId: input.childId,
+    feature: 'weekly_program',
+  });
 
   const plan = await syncWeeklyPlanToMasterPrograms({
     planJson: ai.json as any,

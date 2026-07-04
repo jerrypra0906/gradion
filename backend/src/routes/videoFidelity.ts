@@ -197,7 +197,10 @@ export async function videoFidelityRoutes(
             goalSummary,
           });
 
-          await updateTokenUsage(user.id, Math.max(tokensUsed, 1));
+          await updateTokenUsage(user.id, Math.max(tokensUsed, 1), {
+            childId: job.child_id,
+            feature: 'video_fidelity',
+          });
 
           const updated = await prisma.videoFidelityJob.update({
             where: { id: job.id },

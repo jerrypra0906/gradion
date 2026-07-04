@@ -730,7 +730,10 @@ export async function reportsRoutes(
       }
 
       // Update token usage
-      await updateTokenUsage(user.id, aiResult.tokensUsed);
+      await updateTokenUsage(user.id, aiResult.tokensUsed, {
+        childId: child_id,
+        feature: 'report_summary',
+      });
 
       // Save AI summary to database
       await prisma.$executeRaw`

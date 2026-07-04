@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserPlus } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -15,7 +15,7 @@ import {
   createEmptyObsFromTemplate,
   defaultInitialObservationTemplate,
   ensureTemplateShape,
-  isObsCompleteForTemplate,
+  missingRequiredFieldsForTemplate,
 } from '@/lib/initialObservationTemplate';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,9 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/lib/utils';
 
-const DRAFT_VERSION = 'v1';
+// v2: F/S sliders default to 0 — older drafts stored blank slider values and
+// would resurrect the "filled-looking but empty" state, so they are ignored.
+const DRAFT_VERSION = 'v2';
 
 type ChildDraft = {
   step: 1 | 2;
@@ -71,6 +73,16 @@ export function NewChildPageContent() {
   ]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+
+  // The submit button sits at the bottom of a long checklist; bring the
+  // validation message into view so the parent immediately sees what's missing.
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [error]);
 
   const draftKey = user ? `gradion-child-draft-${DRAFT_VERSION}:${user.id}` : null;
   const [hydrated, setHydrated] = useState(false);
@@ -194,16 +206,15 @@ export function NewChildPageContent() {
     setError('');
   };
 
-  const isAllObsComplete = useMemo(
-    () => observations.every((obs) => isObsCompleteForTemplate(template, obs)),
-    [observations, template],
-  );
-
   const handleNext = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!formData.name.trim()) {
-      setError("Child's name is required");
+      setError(
+        language === 'id'
+          ? 'Nama anak wajib diisi sebelum melanjutkan.'
+          : "Child's name is mandatory before continuing.",
+      );
       return;
     }
     setStep(2);
@@ -211,11 +222,38 @@ export function NewChildPageContent() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Re-entry guard: `loading` state updates asynchronously, so a fast double
+    // click can pass it twice — the ref blocks the second click synchronously.
+    if (loading || submittingRef.current) return;
     setError('');
-    if (!isAllObsComplete) {
-      setError('Please complete the Initial Observation Checklist before creating the child.');
+
+    if (!formData.name.trim()) {
+      setError(
+        language === 'id' ? 'Nama anak wajib diisi.' : "Child's name is mandatory.",
+      );
+      setStep(1);
       return;
     }
+
+    // Point the parent at exactly which mandatory fields are still missing,
+    // instead of silently disabling the button.
+    const lang: 'en' | 'id' = language === 'id' ? 'id' : 'en';
+    const missingByObs = observations
+      .map((obs, idx) => ({ idx, missing: missingRequiredFieldsForTemplate(template, obs, lang) }))
+      .filter((entry) => entry.missing.length > 0);
+    if (missingByObs.length > 0) {
+      const details = missingByObs
+        .map((entry) => `OBS ${entry.idx + 1}: ${entry.missing.join(', ')}`)
+        .join(' — ');
+      setError(
+        lang === 'id'
+          ? `Mohon lengkapi kolom wajib berikut terlebih dahulu untuk melanjutkan. ${details}`
+          : `Please fill in the following mandatory fields first to proceed. ${details}`,
+      );
+      return;
+    }
+
+    submittingRef.current = true;
     setLoading(true);
 
     const initial_observation = buildInitialObservationPayload(template, observations);
@@ -240,6 +278,7 @@ export function NewChildPageContent() {
       const apiError = e.response?.data?.error || e.response?.data?.message;
       setError(apiError || e.message || 'Failed to create child');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
@@ -320,6 +359,7 @@ export function NewChildPageContent() {
           <form onSubmit={step === 1 ? handleNext : handleCreate} className="space-y-6">
             {error && (
               <div
+                ref={errorRef}
                 role="alert"
                 className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
               >
@@ -329,10 +369,21 @@ export function NewChildPageContent() {
 
             {step === 1 ? (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <p className="sm:col-span-2 -mb-1 text-xs text-[#1A2B4C]/60">
+                  <span className="font-semibold text-red-500">*</span>{' '}
+                  {language === 'id'
+                    ? 'wajib diisi · kolom lain bertanda (Opsional)'
+                    : 'mandatory · other fields are marked (Optional)'}
+                </p>
                 <div className="sm:col-span-2">
                   <Input
                     variant="brand"
-                    label={t('childName')}
+                    label={
+                      <>
+                        {t('childName')}
+                        <span className="ml-0.5 font-semibold text-red-500">*</span>
+                      </>
+                    }
                     type="text"
                     required
                     value={formData.name}
@@ -343,7 +394,14 @@ export function NewChildPageContent() {
 
                 <Input
                   variant="brand"
-                  label={t('birthdate')}
+                  label={
+                    <>
+                      {t('birthdate')}
+                      <span className="ml-1.5 text-xs font-normal text-[#1A2B4C]/45">
+                        {language === 'id' ? '(Opsional)' : '(Optional)'}
+                      </span>
+                    </>
+                  }
                   type="date"
                   value={formData.birthdate}
                   onChange={(e) => setFormData({ ...formData, birthdate: e.target.value })}
@@ -352,7 +410,12 @@ export function NewChildPageContent() {
                 <div>
                   <Input
                     variant="brand"
-                    label={t('weeklyHoursTarget')}
+                    label={
+                      <>
+                        {t('weeklyHoursTarget')}
+                        <span className="ml-0.5 font-semibold text-red-500">*</span>
+                      </>
+                    }
                     type="number"
                     min={1}
                     max={40}
@@ -370,7 +433,14 @@ export function NewChildPageContent() {
                 <div className="sm:col-span-2">
                   <Textarea
                     variant="brand"
-                    label={t('environment')}
+                    label={
+                      <>
+                        {t('environment')}
+                        <span className="ml-1.5 text-xs font-normal text-[#1A2B4C]/45">
+                          {language === 'id' ? '(Opsional)' : '(Optional)'}
+                        </span>
+                      </>
+                    }
                     value={formData.environment}
                     onChange={(e) => setFormData({ ...formData, environment: e.target.value })}
                     placeholder={t('environmentPlaceholder')}
@@ -486,7 +556,7 @@ export function NewChildPageContent() {
                 <Button
                   type="submit"
                   variant="brand"
-                  disabled={loading || (step === 2 && (!isAllObsComplete || templateLoading))}
+                  disabled={loading || (step === 2 && templateLoading)}
                 >
                   {step === 1 ? t('next') : loading ? t('creating') : t('createChild')}
                 </Button>

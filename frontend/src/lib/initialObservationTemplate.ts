@@ -184,19 +184,53 @@ export function createEmptyObsFromTemplate(template: IOTemplateJson): ObsFlatFor
   for (const section of template.sections) {
     for (const field of section.fields) {
       if (field.type === 'fs_1_to_5') {
-        // Mandatory behaviors start at 1 instead of blank so the parent isn't
-        // forced to nudge every slider. The optional "Other major" behaviors
-        // stay blank until they are named, so they don't pre-fill noise.
-        const startsFilled = Boolean(field.required) && !CONDITIONAL_FS_LABEL_KEYS[field.key];
-        const def = startsFilled ? '1' : '';
-        state[`${field.key}_f`] = def;
-        state[`${field.key}_s`] = def;
+        // Frequency/Severity sliders start at 0 ("not observed") so the parent
+        // isn't forced to nudge every slider and 0 is a valid answer.
+        state[`${field.key}_f`] = '0';
+        state[`${field.key}_s`] = '0';
       } else {
         state[field.key] = '';
       }
     }
   }
   return state;
+}
+
+/**
+ * Whether a field must be filled right now, given the current answers.
+ * The "Other major" F/S sliders only become required once their paired
+ * "(Specify)" text field has been filled in.
+ */
+export function isFieldRequiredNow(field: IOField, obs: ObsFlatFormState): boolean {
+  if (!field.required) return false;
+  const labelKey = CONDITIONAL_FS_LABEL_KEYS[field.key];
+  if (labelKey && String(obs[labelKey] ?? '').trim() === '') return false;
+  return true;
+}
+
+/** Localized labels of every mandatory field that is still unanswered. */
+export function missingRequiredFieldsForTemplate(
+  template: IOTemplateJson,
+  obs: ObsFlatFormState,
+  language: 'en' | 'id',
+): string[] {
+  const missing: string[] = [];
+  for (const section of template.sections) {
+    for (const field of section.fields) {
+      if (!isFieldRequiredNow(field, obs)) continue;
+      if (field.type === 'fs_1_to_5') {
+        if (
+          String(obs[`${field.key}_f`] ?? '').trim() === '' ||
+          String(obs[`${field.key}_s`] ?? '').trim() === ''
+        ) {
+          missing.push(labelForField(field, language));
+        }
+      } else if (String(obs[field.key] ?? '').trim() === '') {
+        missing.push(labelForField(field, language));
+      }
+    }
+  }
+  return missing;
 }
 
 export function isObsCompleteForTemplate(template: IOTemplateJson, obs: ObsFlatFormState): boolean {
@@ -237,8 +271,8 @@ export function buildObsPayloadFromFlat(obs: ObsFlatFormState) {
     const s = obs[`${base}_s`];
     if (f === undefined && s === undefined) continue;
     const entry: { f: number; s: number; label?: string | null } = {
-      f: Number(f),
-      s: Number(s),
+      f: Number(f || 0),
+      s: Number(s || 0),
     };
     if (base === 'other_major_1' || base === 'other_major_2') {
       const labelKey = `${base}_label`;

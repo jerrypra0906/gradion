@@ -605,11 +605,14 @@ export async function checkTokenQuota(
 }
 
 /**
- * Update token wallet after AI usage
+ * Update token wallet after AI usage. When child/feature context is provided,
+ * the spend is also recorded in the per-child usage ledger so token
+ * utilization can be reported per child.
  */
 export async function updateTokenUsage(
   userId: number,
-  tokensUsed: number
+  tokensUsed: number,
+  context?: { childId?: number | null; feature?: string }
 ): Promise<void> {
   try {
     await prisma.aITokenWallet.update({
@@ -623,6 +626,20 @@ export async function updateTokenUsage(
   } catch (error: any) {
     logger.error('Error updating token usage:', error);
     throw error;
+  }
+
+  // Ledger write is best-effort: a logging failure must not undo the AI call.
+  try {
+    await prisma.aITokenUsageLog.create({
+      data: {
+        user_id: userId,
+        child_id: context?.childId ?? null,
+        feature: context?.feature ?? 'unknown',
+        tokens: tokensUsed,
+      },
+    });
+  } catch (error: any) {
+    logger.warn({ err: error, userId }, 'Failed to record AI token usage log');
   }
 }
 

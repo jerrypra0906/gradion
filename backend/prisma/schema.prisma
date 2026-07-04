@@ -39,6 +39,7 @@ model User {
   videoFidelityJobs     VideoFidelityJob[]
   learningModuleProgress LearningModuleProgress[]
   abaProgramSessions   ChildAbaProgramSession[]
+  aiTokenUsageLogs     AITokenUsageLog[]
 
   @@index([referral_code])
   @@index([referred_by_code])
@@ -81,6 +82,11 @@ model Child {
   assessment_review_status AiReviewStatus @default(pending)
   assessment_reviewed_at   DateTime?
   assessment_reviewed_by   Int?
+  // Soft delete: parent "delete" hides the child everywhere except admin, where it
+  // shows as deactivated and can be reactivated on request.
+  is_active      Boolean   @default(true)
+  deactivated_at DateTime?
+  deactivated_by Int?
 
   parent               User                  @relation("ParentChildren", fields: [parent_id], references: [id], onDelete: Cascade)
   therapistMap         TherapistChild[]
@@ -93,6 +99,7 @@ model Child {
   abaProgramWeeks      ChildAbaProgramWeek[]
   abaAutismCases       AbaAutismCase[]
   abaProgramLearningInsights AbaProgramLearningInsight[]
+  aiTokenUsageLogs     AITokenUsageLog[]
 
   @@map("children")
 }
@@ -527,6 +534,26 @@ model Subscription {
   @@index([status])
   @@index([end_date])
   @@map("subscriptions")
+}
+
+/// Ledger of AI token spending. The wallet keeps the per-user monthly
+/// aggregate; this log attributes each spend to a child and feature so
+/// usage can be reported per child.
+model AITokenUsageLog {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  child_id   Int?
+  feature    String // e.g. initial_assessment, weekly_program, report_summary, video_fidelity, therapy_notes_ocr
+  tokens     Int
+  created_at DateTime @default(now())
+
+  user  User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  child Child? @relation(fields: [child_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([child_id])
+  @@index([created_at])
+  @@map("ai_token_usage_logs")
 }
 
 model AITokenWallet {

@@ -257,7 +257,10 @@ export async function abaProgramRoutes(
           return { success: false, error: 'Failed to translate program' };
         }
 
-        await updateTokenUsage(user.id, translated.tokensUsed);
+        await updateTokenUsage(user.id, translated.tokensUsed, {
+          childId,
+          feature: 'weekly_program_translation',
+        });
 
         const synced = await syncWeeklyPlanToMasterPrograms({
           planJson: translated.json as any,
@@ -516,7 +519,10 @@ export async function abaProgramRoutes(
           };
         }
 
-        await updateTokenUsage(user.id, ocr.tokensUsed);
+        await updateTokenUsage(user.id, ocr.tokensUsed, {
+          childId,
+          feature: 'therapy_notes_ocr',
+        });
 
         const fileSafe = safeFilename(filename, `child_${childId}_week_${weekId}`);
         const storagePath = `therapy-notes/${fileSafe}`;

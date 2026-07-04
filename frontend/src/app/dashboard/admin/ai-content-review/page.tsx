@@ -102,10 +102,17 @@ export default function AiContentReviewPage() {
   };
 
   // ---- Assessment actions ----
-  const reviewAssessment = async (childId: number, decision: 'approved' | 'rejected') => {
+  const reviewAssessment = async (
+    childId: number,
+    decision: 'approved' | 'rejected' | 'pending'
+  ) => {
     try {
       await apiClient.post(`/admin/ai-content/assessment/${childId}/review`, { decision });
-      flash(`Assessment ${decision}.`);
+      flash(
+        decision === 'pending'
+          ? 'Assessment set back to pending — hidden from the parent until re-approved.'
+          : `Assessment ${decision}.`
+      );
       await load();
     } catch {
       setError('Failed to update assessment review status.');
@@ -138,10 +145,17 @@ export default function AiContentReviewPage() {
   };
 
   // ---- Week actions ----
-  const reviewWeek = async (weekId: number, decision: 'approved' | 'rejected') => {
+  const reviewWeek = async (
+    weekId: number,
+    decision: 'approved' | 'rejected' | 'pending'
+  ) => {
     try {
       await apiClient.post(`/admin/ai-content/week/${weekId}/review`, { decision });
-      flash(`Weekly program ${decision}.`);
+      flash(
+        decision === 'pending'
+          ? 'Weekly program set back to pending — hidden from the parent until re-approved.'
+          : `Weekly program ${decision}.`
+      );
       await load();
     } catch {
       setError('Failed to update week review status.');
@@ -289,6 +303,16 @@ export default function AiContentReviewPage() {
                         >
                           Reject
                         </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          title="Hide from the parent again while you revise the content"
+                          onClick={() => reviewAssessment(a.child_id, 'pending')}
+                          disabled={a.review_status === 'pending'}
+                        >
+                          Set pending
+                        </Button>
                         <Button type="button" size="sm" variant="outline" onClick={() => deleteAssessment(a.child_id)}>
                           Delete
                         </Button>
@@ -428,6 +452,16 @@ export default function AiContentReviewPage() {
                           disabled={w.review_status === 'rejected'}
                         >
                           Reject
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          title="Hide from the parent again while you revise the program"
+                          onClick={() => reviewWeek(w.week_id, 'pending')}
+                          disabled={w.review_status === 'pending'}
+                        >
+                          Set pending
                         </Button>
                         <Button type="button" size="sm" variant="outline" onClick={() => deleteWeek(w.week_id)}>
                           Delete

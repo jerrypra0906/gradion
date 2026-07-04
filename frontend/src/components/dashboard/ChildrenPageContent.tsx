@@ -27,7 +27,7 @@ function formatChildAge(
 
 export function ChildrenPageContent() {
   const { user } = useAuthStore();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [children, setChildren] = useState<Child[]>([]);
   const [tokenWallet, setTokenWallet] = useState<AITokenWalletSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +97,11 @@ export function ChildrenPageContent() {
   const tokenPercent =
     tokenLimit > 0 ? Math.min(100, Math.round((tokenUsed / tokenLimit) * 100)) : 0;
   const canAddChild = user.role === 'parent';
+  const isParentView = user.role === 'parent';
+  // Non-parent viewers (admin/therapist) aggregate the children's own ledger
+  // usage — their personal wallet is irrelevant to this list.
+  const childTokensTotal = children.reduce((sum, c) => sum + (c.ai_tokens_used ?? 0), 0);
+  const perChildTokenLabel = language === 'id' ? 'Token AI anak ini' : "This child's AI tokens";
 
   return (
     <DashboardLayout>
@@ -170,18 +175,47 @@ export function ChildrenPageContent() {
                   icon={Users}
                   accent="teal"
                 />
-                <DashboardStatCard
-                  value={`${tokenUsed.toLocaleString('id-ID')} / ${tokenLimit.toLocaleString('id-ID')}`}
-                  label={t('tokenLabel')}
-                  icon={Coins}
-                  accent="gold"
-                />
-                <DashboardStatCard
-                  value={tokenLimit > 0 ? `${tokenPercent}%` : '0%'}
-                  label={t('tokenUtilization')}
-                  icon={Activity}
-                  accent="navy"
-                />
+                {isParentView ? (
+                  <>
+                    <DashboardStatCard
+                      value={`${tokenUsed.toLocaleString('id-ID')} / ${tokenLimit.toLocaleString('id-ID')}`}
+                      label={t('tokenLabel')}
+                      icon={Coins}
+                      accent="gold"
+                    />
+                    <DashboardStatCard
+                      value={tokenLimit > 0 ? `${tokenPercent}%` : '0%'}
+                      label={t('tokenUtilization')}
+                      icon={Activity}
+                      accent="navy"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <DashboardStatCard
+                      value={childTokensTotal.toLocaleString('id-ID')}
+                      label={
+                        language === 'id'
+                          ? 'Total token AI (semua anak)'
+                          : 'Total AI tokens (all children)'
+                      }
+                      icon={Coins}
+                      accent="gold"
+                    />
+                    <DashboardStatCard
+                      value={
+                        children.length > 0
+                          ? Math.round(childTokensTotal / children.length).toLocaleString('id-ID')
+                          : '0'
+                      }
+                      label={
+                        language === 'id' ? 'Rata-rata token / anak' : 'Average tokens / child'
+                      }
+                      icon={Activity}
+                      accent="navy"
+                    />
+                  </>
+                )}
               </div>
             </section>
 
@@ -201,9 +235,14 @@ export function ChildrenPageContent() {
                     child={child}
                     ageLabel={formatChildAge(child.birthdate, t('age'), t('nA'), t('years'))}
                     diagnosisLabel={t('noDiagnosis')}
-                    tokenLabel={t('tokenLabel')}
-                    tokenUsed={tokenUsed}
-                    tokenLimit={tokenLimit}
+                    tokenLabel={perChildTokenLabel}
+                    tokenUsed={child.ai_tokens_used ?? 0}
+                    tokenLimit={isParentView ? tokenLimit : 0}
+                    parentLabel={
+                      !isParentView && child.parent
+                        ? `${child.parent.name}${child.parent.email ? ` · ${child.parent.email}` : ''}`
+                        : null
+                    }
                   />
                 ))}
               </div>

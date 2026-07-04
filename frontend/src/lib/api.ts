@@ -175,6 +175,11 @@ export interface Child {
   initial_assessment_report_id?: string | null;
   assessment_review_status?: AiReviewStatus;
   has_pending_assessment?: boolean;
+  /** Soft delete: false = deactivated (visible to admin only). */
+  is_active?: boolean;
+  deactivated_at?: string | null;
+  /** Total AI tokens consumed for this child (from the usage ledger). */
+  ai_tokens_used?: number;
   parent?: {
     id: number;
     name: string;
