@@ -123,14 +123,15 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
 
-  // Rate Limiting
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000),
-  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(100),
-  AUTH_LOGIN_MAX_ATTEMPTS: z.coerce.number().default(10),
-  AUTH_LOGIN_WINDOW_MS: z.coerce.number().default(900000),
+  // Rate Limiting (per client IP unless noted)
+  // Defaults support large concurrent onboarding (shared office/school/event Wi‑Fi).
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(900000), // 15 minutes
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().default(10000),
+  AUTH_LOGIN_MAX_ATTEMPTS: z.coerce.number().default(20),
+  AUTH_LOGIN_WINDOW_MS: z.coerce.number().default(900000), // 15 minutes, per IP+email
 
-  // Registration Security
-  REGISTRATION_MAX_ATTEMPTS_PER_IP: z.coerce.number().default(5),
+  // Registration Security (per IP — many users often share one public IP)
+  REGISTRATION_MAX_ATTEMPTS_PER_IP: z.coerce.number().default(2000),
   REGISTRATION_WINDOW_MINUTES: z.coerce.number().default(60),
 
   // Feature Flags

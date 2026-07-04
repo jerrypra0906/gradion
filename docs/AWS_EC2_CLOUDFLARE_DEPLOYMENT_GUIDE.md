@@ -262,7 +262,16 @@ RESEND_FROM_NAME=Gradion
 GEMINI_API_KEY=
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-6
 ENABLE_VIDEO_FIDELITY=true
+
+# ========= Rate limiting (per client IP; supports large concurrent signups) =========
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=10000
+AUTH_LOGIN_MAX_ATTEMPTS=20
+AUTH_LOGIN_WINDOW_MS=900000
+REGISTRATION_MAX_ATTEMPTS_PER_IP=2000
+REGISTRATION_WINDOW_MINUTES=60
 ```
 
 **B) Backend app secrets (optional but recommended)** — copy the example and edit:
@@ -602,12 +611,66 @@ You should see `access-control-allow-origin: https://gradion.id` in the response
 - Ensure Nginx serves `/.well-known/acme-challenge/` locally (see §6.5 / §7.4) — do **not** proxy that path to Next.js/API or you get **500** on the challenge URL.
 - Error example: `2606:4700:... Invalid response ... acme-challenge ... 500` → Cloudflare proxy is on and/or challenge is hitting your app instead of Nginx webroot.
 
-### 10.3 Postgres disk fills up
+### 10.3 Too many registration / login attempts (429)
+
+Error examples:
+
+```text
+Too many registration attempts from this IP address. Please try again later.
+Rate limit exceeded, retry in …
+```
+
+**Causes:**
+
+1. Old defaults were very low (`REGISTRATION_MAX_ATTEMPTS_PER_IP=5`, `RATE_LIMIT_MAX_REQUESTS=100`). Many users on the same office/school/event Wi‑Fi share one public IP and hit the cap quickly.
+2. Without `trustProxy`, the API treated **every** user as the Nginx/Cloudflare IP, so all signups shared one bucket.
+
+**Fix:** Pull latest code (includes `trustProxy: true` and higher defaults), set these in `~/Gradion/.env` and/or `~/Gradion/backend/.env`, then recreate the backend:
+
+```env
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=10000
+AUTH_LOGIN_MAX_ATTEMPTS=20
+AUTH_LOGIN_WINDOW_MS=900000
+REGISTRATION_MAX_ATTEMPTS_PER_IP=2000
+REGISTRATION_WINDOW_MINUTES=60
+```
+
+```bash
+cd ~/Gradion
+git pull
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d --build backend
+```
+
+Login is limited **per IP + email** (brute-force protection), so different users logging in at once are not blocked by each other. Registration is limited **per IP** only — raise `REGISTRATION_MAX_ATTEMPTS_PER_IP` further if you expect 1000+ people on one venue network.
+
+### 10.4 AI Initial Assessment generation fails (502)
+
+Error in the UI or API may mention Anthropic/Gemini/OpenAI and the model id.
+
+**Cause:** No configured AI provider succeeded (invalid model, bad key, or missing keys).
+
+**Fix:** In `~/Gradion/backend/.env`:
+
+```env
+GEMINI_API_KEY=your-gemini-key
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-6
+```
+
+Recreate the backend and check logs:
+
+```bash
+docker compose up -d --force-recreate backend
+docker compose logs backend --tail 100 | grep -i "AI text generation failed"
+```
+
+### 10.5 Postgres disk fills up
 
 - Increase EBS volume size (AWS) and extend filesystem.
 - Add backup/rotation for logs and periodic `pg_dump`.
 
-### 10.4 `prisma generate` fails during Docker build
+### 10.6 `prisma generate` fails during Docker build
 
 Error example:
 
@@ -629,7 +692,7 @@ docker compose exec backend sh -lc "npx prisma migrate deploy"
 
 Use `--no-cache` only if a normal rebuild still fails.
 
-### 10.5 Docker build slow or fails during `apt-get` / `libvips-dev`
+### 10.7 Docker build slow or fails during `apt-get` / `libvips-dev`
 
 If you see:
 
@@ -654,7 +717,7 @@ If apt still fails transiently (network blip), retry once:
 docker compose build backend
 ```
 
-### 10.6 Docker build slow or fails after `npm run build`
+### 10.8 Docker build slow or fails after `npm run build`
 
 First backend build on **`t3.small`** (2 GB RAM) often takes **3–6 minutes**. That is normal for this stack.
 
@@ -703,7 +766,7 @@ free -h
 docker compose build backend && docker compose up -d
 ```
 
-### 10.7 Backend container keeps restarting
+### 10.9 Backend container keeps restarting
 
 If `docker compose exec backend ...` says **"Container is restarting"**:
 

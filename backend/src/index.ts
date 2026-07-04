@@ -40,6 +40,9 @@ const server = Fastify({
   logger: true,
   requestIdLogLabel: 'reqId',
   disableRequestLogging: false,
+  // Required behind Nginx/Cloudflare so rate limits use the real client IP
+  // (otherwise every user shares the proxy IP and hits limits together).
+  trustProxy: true,
 });
 
 // Register plugins

@@ -36,6 +36,40 @@ function hasAnthropic(): boolean {
   return Boolean(config.ai.anthropicApiKey);
 }
 
+function hasAnyAiProvider(): boolean {
+  return hasGemini() || hasOpenAI() || hasAnthropic();
+}
+
+function formatProviderError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>;
+    if (typeof e.message === 'string') {
+      const status = typeof e.status === 'number' ? ` (HTTP ${e.status})` : '';
+      return `${e.message}${status}`;
+    }
+    const nested = e.error;
+    if (nested && typeof nested === 'object' && typeof (nested as { message?: string }).message === 'string') {
+      return (nested as { message: string }).message;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+let lastTextGenerationError: string | null = null;
+
+function captureTextGenerationError(
+  error: unknown,
+  provider: string,
+  model: string
+): void {
+  lastTextGenerationError = `${provider} (${model}): ${formatProviderError(error)}`;
+  logger.error({ err: error, provider, model }, 'AI text generation failed');
+}
+
+export function getLastTextGenerationError(): string | null {
+  return lastTextGenerationError;
+}
+
 function getAnthropicClient(): Anthropic | null {
   if (!config.ai.anthropicApiKey) return null;
   if (!anthropicClient) {
@@ -74,7 +108,7 @@ async function generateTextGemini(
     }
     return { text, tokensUsed };
   } catch (error: unknown) {
-    logger.error({ err: error }, 'Gemini text generation failed');
+    captureTextGenerationError(error, 'Gemini', config.ai.geminiModel);
     return null;
   }
 }
@@ -142,7 +176,7 @@ async function generateJsonGemini(
     if (!text) return null;
     return { text, tokensUsed };
   } catch (error: unknown) {
-    logger.error({ err: error }, 'Gemini JSON generation failed');
+    captureTextGenerationError(error, 'Gemini', config.ai.geminiModel);
     return null;
   }
 }
@@ -173,7 +207,7 @@ async function generateTextOpenAI(
     }
     return { text, tokensUsed };
   } catch (error: unknown) {
-    logger.error({ err: error }, 'OpenAI text generation failed');
+    captureTextGenerationError(error, 'OpenAI', config.ai.openaiModel);
     return null;
   }
 }
@@ -207,7 +241,7 @@ async function generateTextClaude(
     if (!text) return null;
     return { text, tokensUsed };
   } catch (error: unknown) {
-    logger.error({ err: error }, 'Claude text generation failed');
+    captureTextGenerationError(error, 'Anthropic', config.ai.anthropicModel);
     return null;
   }
 }
@@ -319,12 +353,16 @@ Important:
 --- RAW JSON (for reference) ---
 {{RAW_JSON}}`;
 
+export type InitialAssessmentResult =
+  | { ok: true; reportMarkdown: string; tokensUsed: number }
+  | { ok: false; error: string };
+
 export async function generateInitialAssessmentFromObservation(input: {
   childName: string;
   diagnosis?: string | null;
   initialObservation: unknown;
   language?: 'en' | 'id';
-}): Promise<{ reportMarkdown: string; tokensUsed: number } | null> {
+}): Promise<InitialAssessmentResult> {
   // Minimal, robust mapping from our saved OBS1 payload into the prompt's schema
   const raw = input.initialObservation as any;
   const obs1 = raw?.obs1 ?? raw?.obs?.obs1 ?? raw;
@@ -369,6 +407,7 @@ export async function generateInitialAssessmentFromObservation(input: {
   // mid-sentence. ~1800 comfortably fits the complete assessment.
   const maxOut = 1800;
   const temp = 0.35;
+  lastTextGenerationError = null;
 
   const out =
     (await generateTextGemini(INITIAL_ASSESSMENT_SYSTEM_PROMPT, userPrompt, {
@@ -385,24 +424,44 @@ export async function generateInitialAssessmentFromObservation(input: {
     }));
 
   if (!out) {
-    if (!hasGemini() && !hasOpenAI() && !hasAnthropic()) {
+    if (!hasAnyAiProvider()) {
       logger.warn(
         'No AI keys configured (GEMINI/OPENAI/ANTHROPIC). Cannot generate initial assessment.'
       );
-    } else {
-      logger.warn(
-        {
-          gemini: hasGemini() ? config.ai.geminiModel : 'off',
-          openai: hasOpenAI() ? config.ai.openaiModel : 'off',
-          anthropic: hasAnthropic() ? config.ai.anthropicModel : 'off',
-        },
-        'Initial assessment generation returned null'
-      );
+      return {
+        ok: false,
+        error:
+          'AI Initial Assessment is not configured. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY on the server.',
+      };
     }
-    return null;
+
+    logger.warn(
+      {
+        gemini: hasGemini() ? config.ai.geminiModel : 'off',
+        openai: hasOpenAI() ? config.ai.openaiModel : 'off',
+        anthropic: hasAnthropic() ? config.ai.anthropicModel : 'off',
+        lastError: lastTextGenerationError,
+      },
+      'Initial assessment generation failed'
+    );
+
+    const providerHint = [
+      hasGemini() ? `Gemini (${config.ai.geminiModel})` : null,
+      hasOpenAI() ? `OpenAI (${config.ai.openaiModel})` : null,
+      hasAnthropic() ? `Anthropic (${config.ai.anthropicModel})` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    return {
+      ok: false,
+      error:
+        lastTextGenerationError ??
+        `AI generation failed for configured provider(s): ${providerHint}. Check API keys and model IDs.`,
+    };
   }
 
-  return { reportMarkdown: out.text, tokensUsed: out.tokensUsed };
+  return { ok: true, reportMarkdown: out.text, tokensUsed: out.tokensUsed };
 }
 
 /**

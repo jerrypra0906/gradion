@@ -6,6 +6,7 @@ import { EmailService } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
 import {
   generateInitialAssessmentFromObservation,
+  getLastTextGenerationError,
   translateInitialAssessmentMarkdownToIndonesian,
   hasAIAccess,
   checkTokenQuota,
@@ -344,43 +345,60 @@ export async function childrenRoutes(
         return { success: false, error: aiGate.error };
       }
 
-      const result =
-        lang === 'id' && mode === 'translate'
-          ? child.initial_assessment_report
-            ? (logger.info({ childId }, 'Translating English assessment to Indonesian'),
-              await translateInitialAssessmentMarkdownToIndonesian(
-                child.initial_assessment_report
-              ))
-            : null
-          : await generateInitialAssessmentFromObservation({
-              childName: child.name,
-              diagnosis: child.diagnosis,
-              initialObservation: child.initial_observation,
-              language: lang,
-            });
+      let reportMarkdown: string;
+      let tokensUsed: number;
 
-      if (!result) {
-        // If Claude is configured but generation failed, surface a more accurate error.
-        reply.code(config.ai.anthropicApiKey ? 502 : 503);
-        return {
-          success: false,
-          error:
-            config.ai.anthropicApiKey
-              ? lang === 'id' && mode === 'translate' && !child.initial_assessment_report
-                ? 'No English AI Initial Assessment found to translate. Switch to English and generate it first, then translate.'
-                : `Claude generation failed. Verify ANTHROPIC_MODEL is valid for your Anthropic account (current: ${config.ai.anthropicModel}).`
-              : 'AI Initial Assessment is not configured. Please set ANTHROPIC_API_KEY on the server.',
-        };
+      if (lang === 'id' && mode === 'translate') {
+        if (!child.initial_assessment_report) {
+          reply.code(400);
+          return {
+            success: false,
+            error:
+              'No English AI Initial Assessment found to translate. Switch to English and generate it first, then translate.',
+          };
+        }
+        logger.info({ childId }, 'Translating English assessment to Indonesian');
+        const translated = await translateInitialAssessmentMarkdownToIndonesian(
+          child.initial_assessment_report
+        );
+        if (!translated) {
+          reply.code(config.ai.anthropicApiKey ? 502 : 503);
+          return {
+            success: false,
+            error:
+              getLastTextGenerationError() ??
+              `AI translation failed. Verify ANTHROPIC_MODEL is valid for your Anthropic account (current: ${config.ai.anthropicModel}).`,
+          };
+        }
+        reportMarkdown = translated.reportMarkdown;
+        tokensUsed = translated.tokensUsed;
+      } else {
+        const generated = await generateInitialAssessmentFromObservation({
+          childName: child.name,
+          diagnosis: child.diagnosis,
+          initialObservation: child.initial_observation,
+          language: lang,
+        });
+        if (!generated.ok) {
+          const hasAnyAiKey =
+            Boolean(config.ai.geminiApiKey) ||
+            Boolean(config.ai.openaiApiKey) ||
+            Boolean(config.ai.anthropicApiKey);
+          reply.code(hasAnyAiKey ? 502 : 503);
+          return { success: false, error: generated.error };
+        }
+        reportMarkdown = generated.reportMarkdown;
+        tokensUsed = generated.tokensUsed;
       }
 
-      await updateTokenUsage(billingUserId, result.tokensUsed);
+      await updateTokenUsage(billingUserId, tokensUsed);
 
       const updated = await prisma.child.update({
         where: { id: childId },
         data: {
           ...(lang === 'id'
-            ? { initial_assessment_report_id: result.reportMarkdown }
-            : { initial_assessment_report: result.reportMarkdown }),
+            ? { initial_assessment_report_id: reportMarkdown }
+            : { initial_assessment_report: reportMarkdown }),
           // Re-generating/translating resets the report to "pending" admin review.
           assessment_review_status: 'pending',
           assessment_reviewed_at: null,
@@ -414,7 +432,7 @@ export async function childrenRoutes(
         success: true,
         data: {
           child: gatedUpdated,
-          tokensUsed: result.tokensUsed,
+          tokensUsed,
         },
       };
     }
@@ -457,7 +475,11 @@ export async function childrenRoutes(
       });
 
       // Auto-generate Initial Assessment report when observation exists and AI is available.
-      if (child.initial_observation && config.features.ai) {
+      const hasAnyAiKey =
+        Boolean(config.ai.geminiApiKey) ||
+        Boolean(config.ai.openaiApiKey) ||
+        Boolean(config.ai.anthropicApiKey);
+      if (child.initial_observation && config.features.ai && hasAnyAiKey) {
         try {
           const aiGate = await assertInitialAssessmentAICapability(parentId);
           if (!aiGate.ok) {
@@ -473,7 +495,7 @@ export async function childrenRoutes(
             initialObservation: child.initial_observation,
             language: lang,
           });
-          if (result?.reportMarkdown) {
+          if (result.ok) {
             await updateTokenUsage(parentId, result.tokensUsed);
             await prisma.child.update({
               where: { id: child.id },
