@@ -546,8 +546,9 @@ docker logs -f gradion-frontend
 ```bash
 cd ~/Gradion
 git pull
-docker compose up -d --build
-docker compose exec backend sh -lc "npx prisma migrate deploy"
+docker compose -f docker-compose.yml -f docker-compose.backend.yml build backend
+docker compose run --rm --no-deps backend npx prisma migrate deploy
+docker compose -f docker-compose.yml -f docker-compose.backend.yml up -d
 ```
 
 ### 9.2 Frontend server update

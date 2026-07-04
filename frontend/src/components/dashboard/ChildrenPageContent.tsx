@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Activity, Coins, Plus, UserPlus, Users } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -32,6 +32,10 @@ export function ChildrenPageContent() {
   const [tokenWallet, setTokenWallet] = useState<AITokenWalletSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Admin list controls: status filter (deactivated children are only visible
+  // to admins) and name sorting.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'deactivated'>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'name_asc' | 'name_desc'>('newest');
 
   useEffect(() => {
     if (user) {
@@ -90,6 +94,22 @@ export function ChildrenPageContent() {
     }
   };
 
+  const visibleChildren = useMemo(() => {
+    let list = [...children];
+    if (statusFilter !== 'all') {
+      list = list.filter((c) =>
+        statusFilter === 'active' ? c.is_active !== false : c.is_active === false,
+      );
+    }
+    if (sortBy === 'name_asc') {
+      list.sort((a, b) => a.name.localeCompare(b.name, 'id', { sensitivity: 'base' }));
+    } else if (sortBy === 'name_desc') {
+      list.sort((a, b) => b.name.localeCompare(a.name, 'id', { sensitivity: 'base' }));
+    }
+    // 'newest' keeps the API order (created_at desc)
+    return list;
+  }, [children, statusFilter, sortBy]);
+
   if (!user) return null;
 
   const tokenUsed = tokenWallet?.current_token_usage ?? 0;
@@ -98,6 +118,7 @@ export function ChildrenPageContent() {
     tokenLimit > 0 ? Math.min(100, Math.round((tokenUsed / tokenLimit) * 100)) : 0;
   const canAddChild = user.role === 'parent';
   const isParentView = user.role === 'parent';
+  const isAdminView = user.role === 'admin';
   // Non-parent viewers (admin/therapist) aggregate the children's own ledger
   // usage — their personal wallet is irrelevant to this list.
   const childTokensTotal = children.reduce((sum, c) => sum + (c.ai_tokens_used ?? 0), 0);
@@ -220,16 +241,59 @@ export function ChildrenPageContent() {
             </section>
 
             <section>
-              <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="font-montserrat text-lg font-bold text-[#1A2B4C]">
                   {user.role === 'parent' ? t('myChildren') : t('children')}
                 </h2>
-                <span className="text-sm text-[#1A2B4C]/55">
-                  {children.length} {children.length === 1 ? 'anak' : 'anak'}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isAdminView && (
+                    <select
+                      value={statusFilter}
+                      onChange={(e) =>
+                        setStatusFilter(e.target.value as 'all' | 'active' | 'deactivated')
+                      }
+                      aria-label={language === 'id' ? 'Filter status anak' : 'Filter child status'}
+                      className="rounded-lg border border-[#E5E8EB] bg-white px-3 py-1.5 text-sm text-[#1A2B4C] focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+                    >
+                      <option value="all">{language === 'id' ? 'Semua status' : 'All statuses'}</option>
+                      <option value="active">{language === 'id' ? 'Aktif' : 'Activated'}</option>
+                      <option value="deactivated">
+                        {language === 'id' ? 'Nonaktif' : 'Deactivated'}
+                      </option>
+                    </select>
+                  )}
+                  {isAdminView && (
+                    <select
+                      value={sortBy}
+                      onChange={(e) =>
+                        setSortBy(e.target.value as 'newest' | 'name_asc' | 'name_desc')
+                      }
+                      aria-label={language === 'id' ? 'Urutkan anak' : 'Sort children'}
+                      className="rounded-lg border border-[#E5E8EB] bg-white px-3 py-1.5 text-sm text-[#1A2B4C] focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+                    >
+                      <option value="newest">{language === 'id' ? 'Terbaru' : 'Newest'}</option>
+                      <option value="name_asc">
+                        {language === 'id' ? 'Nama A–Z' : 'Name A–Z'}
+                      </option>
+                      <option value="name_desc">
+                        {language === 'id' ? 'Nama Z–A' : 'Name Z–A'}
+                      </option>
+                    </select>
+                  )}
+                  <span className="text-sm text-[#1A2B4C]/55">
+                    {visibleChildren.length} anak
+                  </span>
+                </div>
               </div>
+              {visibleChildren.length === 0 ? (
+                <div className="rounded-2xl border border-[#E5E8EB] bg-white px-6 py-10 text-center text-sm text-[#1A2B4C]/55">
+                  {language === 'id'
+                    ? 'Tidak ada anak yang cocok dengan filter ini.'
+                    : 'No children match this filter.'}
+                </div>
+              ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {children.map((child) => (
+                {visibleChildren.map((child) => (
                   <ChildCard
                     key={child.id}
                     child={child}
@@ -246,6 +310,7 @@ export function ChildrenPageContent() {
                   />
                 ))}
               </div>
+              )}
             </section>
           </>
         )}

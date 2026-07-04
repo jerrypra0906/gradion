@@ -234,8 +234,16 @@ export async function parentLogsRoutes(
           }
           where.child_id = childId;
         }
+      } else if (user.role === 'admin') {
+        // Admin sees all logs, but a child_id filter must still scope the
+        // result (e.g. the Child Detail activity section).
+        if (child_id) {
+          const childId = parseInt(child_id, 10);
+          if (!Number.isNaN(childId)) {
+            where.child_id = childId;
+          }
+        }
       }
-      // Admin sees all logs
 
       if (status) {
         where.status = status;
