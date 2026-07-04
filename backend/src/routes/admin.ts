@@ -699,6 +699,39 @@ export async function adminRoutes(
     }
   );
 
+  // Reset a user's AI token usage back to 0 (support action, e.g. after a
+  // billing correction). The monthly limit and renewal date stay untouched.
+  fastify.post(
+    '/users/:id/reset-token-usage',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = parseInt(id, 10);
+      if (Number.isNaN(userId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid user id' };
+      }
+
+      const wallet = await prisma.aITokenWallet.findUnique({
+        where: { user_id: userId },
+      });
+      if (!wallet) {
+        reply.code(404);
+        return { success: false, error: 'This user has no AI token wallet yet.' };
+      }
+
+      const updated = await prisma.aITokenWallet.update({
+        where: { user_id: userId },
+        data: {
+          current_token_usage: 0,
+          last_reset_date: new Date(),
+        },
+      });
+
+      return { success: true, data: updated };
+    }
+  );
+
   fastify.post(
     '/users',
     { preHandler: [authenticate, requireRole('admin')] },

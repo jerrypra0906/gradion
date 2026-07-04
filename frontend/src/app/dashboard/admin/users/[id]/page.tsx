@@ -28,6 +28,9 @@ export default function UserDetailPage() {
   const [planConfigs, setPlanConfigs] = useState<Record<string, { weeks: number }>>({});
   const [selectedRole, setSelectedRole] = useState<User['role']>('parent');
   const [savingRole, setSavingRole] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resettingTokens, setResettingTokens] = useState(false);
+  const [resetTokensMsg, setResetTokensMsg] = useState('');
 
   useEffect(() => {
     if (user && user.role === 'admin' && userId) {
@@ -121,6 +124,30 @@ export default function UserDetailPage() {
       }
     } catch {
       // Subscription not found is okay - user might not have one
+    }
+  };
+
+  const handleResetTokenUsage = async () => {
+    if (resettingTokens) return;
+    try {
+      setResettingTokens(true);
+      setResetTokensMsg('');
+      const response = await apiClient.post<ApiResponse<AITokenWallet>>(
+        `/admin/users/${userId}/reset-token-usage`,
+        {}
+      );
+      if (response.data.success && response.data.data) {
+        const updatedWallet = response.data.data;
+        setUserData((prev) => (prev ? { ...prev, aiTokenWallet: updatedWallet } : prev));
+        setResetTokensMsg('Token usage reset to 0.');
+      } else {
+        setResetTokensMsg(response.data.error || 'Failed to reset token usage.');
+      }
+    } catch (err: unknown) {
+      setResetTokensMsg(getApiErrorMessage(err, 'Failed to reset token usage.'));
+    } finally {
+      setResettingTokens(false);
+      setResetConfirm(false);
     }
   };
 
@@ -439,6 +466,60 @@ export default function UserDetailPage() {
                           }%`,
                         }}
                       />
+                    </div>
+
+                    <div className="pt-3 border-t border-gray-200 mt-3">
+                      {resetTokensMsg && (
+                        <p
+                          className={`mb-2 text-xs ${
+                            resetTokensMsg.startsWith('Token usage reset')
+                              ? 'text-green-700'
+                              : 'text-red-600'
+                          }`}
+                        >
+                          {resetTokensMsg}
+                        </p>
+                      )}
+                      {!resetConfirm ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setResetTokensMsg('');
+                            setResetConfirm(true);
+                          }}
+                        >
+                          Reset token usage
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-600">
+                            Set this user&apos;s token usage back to 0 for the current period?
+                            The monthly limit and renewal date stay unchanged.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="danger"
+                              disabled={resettingTokens}
+                              onClick={handleResetTokenUsage}
+                            >
+                              {resettingTokens ? 'Resetting…' : 'Yes, reset to 0'}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={resettingTokens}
+                              onClick={() => setResetConfirm(false)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
