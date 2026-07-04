@@ -236,8 +236,9 @@ export function NewChildPageContent() {
         setError(response.data.error || 'Failed to create child');
       }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setError(e.response?.data?.error || 'Failed to create child');
+      const e = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+      const apiError = e.response?.data?.error || e.response?.data?.message;
+      setError(apiError || e.message || 'Failed to create child');
     } finally {
       setLoading(false);
     }

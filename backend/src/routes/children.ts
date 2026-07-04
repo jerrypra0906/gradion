@@ -22,15 +22,29 @@ import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 
 const createChildSchema = z.object({
   name: z.string().min(1),
-  birthdate: z.string().optional(),
+  // Empty string from <input type="date"> must become null, not Invalid Date.
+  birthdate: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.trim() ? value.trim() : undefined))
+    .refine((value) => value === undefined || !Number.isNaN(Date.parse(value)), {
+      message: 'Invalid birthdate',
+    }),
   diagnosis: z.string().optional(),
-  monthly_quota: z.number().int().positive().default(12),
+  // Coerce so JSON numbers sent as strings (common from form inputs) still work.
+  monthly_quota: z.coerce.number().int().positive().default(12),
   behaviors: z.string().max(10000).optional(),
   concerns: z.string().max(10000).optional(),
   environment: z.string().max(10000).optional(),
   lang: z.enum(['en', 'id']).optional(),
   initial_observation: z.unknown().optional(),
 });
+
+function parseOptionalBirthdate(value?: string): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 const updateChildSchema = z.object({
   name: z.string().min(1).optional(),
@@ -442,63 +456,101 @@ export async function childrenRoutes(
   fastify.post(
     '/',
     { preHandler: [authenticate, requireRole('parent', 'admin')] },
-    async (request, _reply) => {
+    async (request, reply) => {
       const user = (request as AuthenticatedRequest).user!;
-      const body = createChildSchema.parse(request.body);
+
+      let body: z.infer<typeof createChildSchema>;
+      try {
+        body = createChildSchema.parse(request.body);
+      } catch (error) {
+        reply.code(400);
+        return {
+          success: false,
+          error:
+            error instanceof z.ZodError
+              ? error.errors.map((issue) => `${issue.path.join('.') || 'input'}: ${issue.message}`).join('; ')
+              : 'Invalid child data',
+        };
+      }
 
       const parentId = user.role === 'admin' && (request.body as any).parent_id
         ? (request.body as any).parent_id
         : user.id;
 
-      const child = await prisma.child.create({
-        data: {
-          parent_id: parentId,
-          name: body.name,
-          birthdate: body.birthdate ? new Date(body.birthdate) : null,
-          diagnosis: body.diagnosis || null,
-          monthly_quota: body.monthly_quota,
-          used_sessions: 0,
-          behaviors: body.behaviors?.trim() ? body.behaviors.trim() : null,
-          concerns: body.concerns?.trim() ? body.concerns.trim() : null,
-          environment: body.environment?.trim() ? body.environment.trim() : null,
-          initial_observation: body.initial_observation ?? undefined,
-        },
-        include: {
-          parent: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
+      let child;
+      try {
+        child = await prisma.child.create({
+          data: {
+            parent_id: parentId,
+            name: body.name,
+            birthdate: parseOptionalBirthdate(body.birthdate),
+            diagnosis: body.diagnosis || null,
+            monthly_quota: body.monthly_quota,
+            used_sessions: 0,
+            behaviors: body.behaviors?.trim() ? body.behaviors.trim() : null,
+            concerns: body.concerns?.trim() ? body.concerns.trim() : null,
+            environment: body.environment?.trim() ? body.environment.trim() : null,
+            initial_observation: body.initial_observation ?? undefined,
+          },
+          include: {
+            parent: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
             },
           },
-        },
-      });
+        });
+      } catch (error: any) {
+        logger.error({ err: error, parentId }, 'Failed to create child');
+        reply.code(500);
+        return {
+          success: false,
+          error: 'Failed to create child. Please try again.',
+        };
+      }
 
-      // Auto-generate Initial Assessment report when observation exists and AI is available.
+      // AI work is best-effort and must not block/fail child creation (proxy timeouts).
       const hasAnyAiKey =
         Boolean(config.ai.geminiApiKey) ||
         Boolean(config.ai.openaiApiKey) ||
         Boolean(config.ai.anthropicApiKey);
       if (child.initial_observation && config.features.ai && hasAnyAiKey) {
-        try {
-          const aiGate = await assertInitialAssessmentAICapability(parentId);
-          if (!aiGate.ok) {
-            logger.info(
-              { childId: child.id, parentId, reason: aiGate.error },
-              'Skipped auto-generate initial assessment — no AI access'
-            );
-          } else {
-          const lang = body.lang ?? 'en';
-          const result = await generateInitialAssessmentFromObservation({
-            childName: child.name,
-            diagnosis: child.diagnosis,
-            initialObservation: child.initial_observation,
-            language: lang,
-          });
-          if (result.ok) {
+        const lang = body.lang ?? 'en';
+        const childId = child.id;
+        const childName = child.name;
+        const diagnosis = child.diagnosis;
+        const initialObservation = child.initial_observation;
+
+        void (async () => {
+          try {
+            const aiGate = await assertInitialAssessmentAICapability(parentId);
+            if (!aiGate.ok) {
+              logger.info(
+                { childId, parentId, reason: aiGate.error },
+                'Skipped auto-generate initial assessment — no AI access'
+              );
+              return;
+            }
+
+            const result = await generateInitialAssessmentFromObservation({
+              childName,
+              diagnosis,
+              initialObservation,
+              language: lang,
+            });
+            if (!result.ok) {
+              logger.warn(
+                { childId, parentId, error: result.error },
+                'Auto-generate initial assessment returned failure'
+              );
+              return;
+            }
+
             await updateTokenUsage(parentId, result.tokensUsed);
             await prisma.child.update({
-              where: { id: child.id },
+              where: { id: childId },
               data:
                 lang === 'id'
                   ? {
@@ -510,22 +562,19 @@ export async function childrenRoutes(
                       assessment_review_status: 'pending',
                     },
             });
-            if (lang === 'id') (child as any).initial_assessment_report_id = result.reportMarkdown;
-            else (child as any).initial_assessment_report = result.reportMarkdown;
 
             await ensureFirstAbaWeekForChild({
-              childId: child.id,
+              childId,
               userId: parentId,
               lang,
             });
+          } catch (error: any) {
+            logger.warn(
+              { error: error?.message, childId },
+              'Failed to auto-generate initial assessment report'
+            );
           }
-          }
-        } catch (error: any) {
-          logger.warn(
-            { error: error?.message, childId: child.id },
-            'Failed to auto-generate initial assessment report'
-          );
-        }
+        })();
       }
 
       return {
