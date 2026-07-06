@@ -64,15 +64,10 @@ function rangeTrackStyle(value: number, min: number, max: number, color: string)
   };
 }
 
-function mondayWeekStartYmd(d: Date) {
-  const day = d.getDay(); // 0 Sun
-  const diff = (day + 6) % 7; // days since Monday
-  const monday = new Date(d);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(monday.getDate() - diff);
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, '0');
-  const dayNum = String(monday.getDate()).padStart(2, '0');
+function ymdOf(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dayNum}`;
 }
 
@@ -132,6 +127,7 @@ export function ChildDetailPageContent() {
   const abaLocaleSyncInFlightRef = useRef(false);
   const abaAutoGenAttemptedRef = useRef(false);
   const [abaStartProgramId, setAbaStartProgramId] = useState<string | null>(null);
+  const [expandedPrevWeekId, setExpandedPrevWeekId] = useState<number | null>(null);
   // Behavior (OBS 1) editing — only while no assessment/ABA program exists yet.
   const [editingBehaviors, setEditingBehaviors] = useState(false);
   const [behaviorDraft, setBehaviorDraft] = useState<
@@ -150,20 +146,25 @@ export function ChildDetailPageContent() {
   const [targetBusy, setTargetBusy] = useState(false);
   const [targetError, setTargetError] = useState('');
 
-  const currentWeekStart = useMemo(() => mondayWeekStartYmd(new Date()), []);
-  const nextWeekStart = useMemo(() => addDaysYmd(currentWeekStart, 7), [currentWeekStart]);
-  const currentWeekRow = useMemo(
-    () => abaWeeks.find((w) => w.week_start.slice(0, 10) === currentWeekStart) || null,
-    [abaWeeks, currentWeekStart]
-  );
-  const lastCompleted = useMemo(
-    () => abaWeeks.find((w) => w.status === 'completed') || null,
-    [abaWeeks]
-  );
+  const todayYmd = useMemo(() => ymdOf(new Date()), []);
+  // A program runs 7 days from the day it was generated and stays visible
+  // until the parent generates the next one. The newest week is "current".
+  const currentWeekRow = useMemo(() => abaWeeks[0] || null, [abaWeeks]);
+  const currentWeekStartYmd = currentWeekRow
+    ? String(currentWeekRow.week_start).slice(0, 10)
+    : null;
+  const currentWeekEndYmd = currentWeekStartYmd ? addDaysYmd(currentWeekStartYmd, 6) : null;
+  const currentWeekExpired = Boolean(currentWeekEndYmd && todayYmd > currentWeekEndYmd);
+  // Generate targets: refresh the running program in place; start a NEW
+  // program (dated today) once the current one has run its 7 days.
+  const currentWeekStart =
+    !currentWeekRow || currentWeekExpired ? todayYmd : (currentWeekStartYmd as string);
   const canPlanNextWeek =
-    Boolean(lastCompleted) &&
-    !abaWeeks.some((w) => w.week_start.slice(0, 10) === nextWeekStart) &&
-    !lastCompleted?.mainstream_goal_met;
+    Boolean(currentWeekRow) &&
+    (currentWeekRow?.status === 'completed' || currentWeekExpired) &&
+    currentWeekStartYmd !== todayYmd &&
+    !currentWeekRow?.mainstream_goal_met;
+  const previousWeeks = useMemo(() => abaWeeks.slice(1), [abaWeeks]);
 
   // Auto-translate assessment when the selected language version is missing
   useEffect(() => {
@@ -1226,8 +1227,19 @@ export function ChildDetailPageContent() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-[#1A2B4C]/80">
-                <span className="font-semibold text-[#1A2B4C]">{t('abaProgramWeekOf')}:</span>{' '}
-                <span className="font-mono">{currentWeekStart}</span>
+                <span className="font-semibold text-[#1A2B4C]">
+                  {language === 'id' ? 'Periode program' : 'Program period'}:
+                </span>{' '}
+                <span className="font-mono">
+                  {currentWeekRow
+                    ? `${currentWeekStartYmd} → ${currentWeekEndYmd}`
+                    : todayYmd}
+                </span>
+                {currentWeekRow && currentWeekExpired && (
+                  <span className="ml-2 rounded-full border border-[#FFB900]/40 bg-[#FFB900]/15 px-2 py-0.5 text-xs font-medium text-[#8A6100]">
+                    {language === 'id' ? 'Periode berakhir' : 'Period ended'}
+                  </span>
+                )}
                 {abaLoading && <span className="ml-2 text-xs text-[#1A2B4C]/50">({t('loading')}…)</span>}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1237,10 +1249,16 @@ export function ChildDetailPageContent() {
                   onClick={() => handleGenerateAbaWeek(currentWeekStart)}
                   disabled={abaGenerating || !hasAssessmentForAba}
                 >
-                  {abaGenerating ? t('abaProgramGenerating') : t('abaProgramGenerate')}
+                  {abaGenerating
+                    ? t('abaProgramGenerating')
+                    : !currentWeekRow || currentWeekExpired
+                      ? language === 'id'
+                        ? 'Buat program baru'
+                        : 'Generate new program'
+                      : t('abaProgramGenerate')}
                 </Button>
                 {canPlanNextWeek && (
-                  <Button size="sm" variant="outline" onClick={() => handleGenerateAbaWeek(nextWeekStart)}>
+                  <Button size="sm" variant="outline" onClick={() => handleGenerateAbaWeek(todayYmd)}>
                     {t('abaProgramNextWeek')}
                   </Button>
                 )}
@@ -1403,6 +1421,89 @@ export function ChildDetailPageContent() {
                     </ul>
                   </div>
                 )}
+              </div>
+            )}
+
+            {previousWeeks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-[#1A2B4C]">
+                  {language === 'id' ? 'Program sebelumnya' : 'Previous programs'}
+                </div>
+                {previousWeeks.map((w) => {
+                  const start = String(w.week_start).slice(0, 10);
+                  const end = addDaysYmd(start, 6);
+                  const gated = isGatedViewer && w.review_status !== 'approved';
+                  const expanded = expandedPrevWeekId === w.id;
+                  const programs = Array.isArray((w.plan_json as any)?.programs)
+                    ? ((w.plan_json as any).programs as any[])
+                    : [];
+                  return (
+                    <div key={w.id} className="rounded-xl border border-[#E5E8EB] bg-white">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                        onClick={() => setExpandedPrevWeekId(expanded ? null : w.id)}
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-mono text-[#1A2B4C]">
+                            {start} → {end}
+                          </span>
+                          <span className="rounded-full border border-[#E5E8EB] bg-[#FDF8F1] px-2 py-0.5 font-mono text-xs text-[#1A2B4C]/70">
+                            {w.status}
+                          </span>
+                          {gated && (
+                            <span className="rounded-full border border-[#FFB900]/40 bg-[#FFB900]/15 px-2 py-0.5 text-xs font-medium text-[#8A6100]">
+                              {language === 'id' ? 'menunggu peninjauan' : 'awaiting review'}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm text-[#1A2B4C]/40" aria-hidden>
+                          {expanded ? '▾' : '▸'}
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-[#E5E8EB] px-4 py-3">
+                          {gated ? (
+                            <p className="text-sm text-[#1A2B4C]/60">
+                              {language === 'id'
+                                ? 'Program ini belum disetujui admin, jadi isinya belum bisa ditampilkan.'
+                                : 'This program has not been approved by an admin yet, so its content cannot be shown.'}
+                            </p>
+                          ) : programs.length === 0 ? (
+                            <p className="text-sm text-[#1A2B4C]/60">—</p>
+                          ) : (
+                            <ul className="space-y-2">
+                              {programs.map((p: any, idx: number) => (
+                                <li
+                                  key={p?.id != null ? String(p.id) : idx}
+                                  className="rounded-lg border border-[#E5E8EB] p-3 text-sm text-[#1A2B4C]"
+                                >
+                                  <div className="font-semibold">
+                                    {String(p?.name ?? '')}
+                                    {p?.domain ? (
+                                      <span className="font-normal text-[#1A2B4C]/60"> · {String(p.domain)}</span>
+                                    ) : null}
+                                  </div>
+                                  {Array.isArray(p?.targets) && p.targets.length > 0 && (
+                                    <div className="mt-1 text-xs text-[#1A2B4C]/70">
+                                      {(p.targets as string[]).join(' · ')}
+                                    </div>
+                                  )}
+                                  {Number.isFinite(Number(p?.recommended_trials_per_day)) && (
+                                    <div className="mt-1 text-xs text-[#1A2B4C]/50">
+                                      {Number(p.recommended_trials_per_day)}{' '}
+                                      {language === 'id' ? 'trial/hari' : 'trials/day'}
+                                    </div>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
         </DashboardCollapsibleSection>

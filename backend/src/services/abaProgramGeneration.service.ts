@@ -23,15 +23,11 @@ import {
   getPreviousWeekSessionContext,
 } from './abaProgramLearning.service.js';
 
-export function mondayWeekStartYmd(d: Date = new Date()) {
-  const day = d.getDay();
-  const diff = (day + 6) % 7;
-  const monday = new Date(d);
-  monday.setHours(0, 0, 0, 0);
-  monday.setDate(monday.getDate() - diff);
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth() + 1).padStart(2, '0');
-  const dayNum = String(monday.getDate()).padStart(2, '0');
+/** Programs run for 7 days from the day they are generated (not calendar weeks). */
+export function todayYmd(d: Date = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dayNum}`;
 }
 
@@ -221,7 +217,7 @@ export async function ensureFirstAbaWeekForChild(input: {
     const result = await generateAbaWeekForChild({
       childId: input.childId,
       userId: input.userId,
-      weekStartYmd: mondayWeekStartYmd(),
+      weekStartYmd: todayYmd(),
       lang: input.lang,
     });
 

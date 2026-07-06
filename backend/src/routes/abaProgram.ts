@@ -163,7 +163,7 @@ export async function abaProgramRoutes(
         const lang = body.lang === 'id' ? 'id' : 'en';
         if (!body.week_start) {
           reply.code(400);
-          return { success: false, error: 'week_start is required (YYYY-MM-DD, Monday of week)' };
+          return { success: false, error: 'week_start is required (YYYY-MM-DD — the day the program starts)' };
         }
 
         const result = await generateAbaWeekForChild({
