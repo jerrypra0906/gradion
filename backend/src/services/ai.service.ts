@@ -309,6 +309,7 @@ export async function translateInitialAssessmentMarkdownToIndonesian(
 
 Rules:
 - Preserve Markdown formatting and structure.
+- Translate EVERYTHING into Bahasa Indonesia, including section headings/titles — no English may remain (except personal names).
 - Keep names as-is.
 - Do not add commentary or extra sections.
 - Output ONLY the translated Markdown.
@@ -317,7 +318,8 @@ Rules:
 ${englishMarkdown}
 --- END REPORT ---`;
 
-  const out = await generateTextClaude(system, user, { maxTokens: 1100, temperature: 0.2 });
+  // Source reports can be up to ~1800 tokens; 1100 truncated longer translations.
+  const out = await generateTextClaude(system, user, { maxTokens: 2200, temperature: 0.2 });
   if (!out) return null;
   return { reportMarkdown: out.text, tokensUsed: out.tokensUsed };
 }
@@ -326,19 +328,34 @@ const INITIAL_ASSESSMENT_SYSTEM_PROMPT = `You are a compassionate BCBA (early in
 
 // Keep this prompt short to reduce latency and cost.
 // Output must stay structured (Markdown headings) because the UI renders it.
+// Headings are injected per language: hardcoding English headings while asking
+// for Indonesian output produced mixed-language reports (EN titles, ID body).
+const INITIAL_ASSESSMENT_HEADINGS = {
+  en: {
+    h1: '## 1. What we’re seeing (from the checklist)',
+    h2: '## 2. What this may mean (simple explanation)',
+    h3: '## 3. What to try this week (gentle, practical steps)',
+  },
+  id: {
+    h1: '## 1. Apa yang kami amati (dari checklist)',
+    h2: '## 2. Apa kemungkinan artinya (penjelasan sederhana)',
+    h3: '## 3. Yang bisa dicoba minggu ini (langkah praktis dan lembut)',
+  },
+} as const;
+
 const INITIAL_ASSESSMENT_USER_PROMPT_TEMPLATE = `You will receive an "Initial Observation Checklist" summary.
 
 Write a short, parent-friendly report that is supportive and easy to understand. Avoid scary language and avoid over-confident conclusions.
 
-Output EXACTLY these sections in Markdown:
+Output EXACTLY these sections in Markdown, using these EXACT headings verbatim:
 
-## 1. What we’re seeing (from the checklist)
+{{H1}}
 - 3-5 bullet points. Use plain language. Mention strengths too.
 
-## 2. What this may mean (simple explanation)
+{{H2}}
 - 2-4 bullet points. No jargon. If you use a term, explain it in one short sentence.
 
-## 3. What to try this week (gentle, practical steps)
+{{H3}}
 - 5-7 numbered steps that are doable at home.
 - Keep each step 1-2 sentences.
 
@@ -394,12 +411,18 @@ export async function generateInitialAssessmentFromObservation(input: {
     `Not captured in this checklist: direct measures of initiating communication, independent play, and broader language skills.`,
   ];
 
+  const lang: 'en' | 'id' = input.language === 'id' ? 'id' : 'en';
+  const headings = INITIAL_ASSESSMENT_HEADINGS[lang];
+
   const languageInstruction =
-    input.language === 'id'
-      ? '\n\nWrite the entire report in natural, clear Bahasa Indonesia.'
+    lang === 'id'
+      ? '\n\nWrite EVERY part of the report — headings, bullet points, and all text — in natural, clear Bahasa Indonesia. Do NOT leave any English words or phrases in the output (translate clinical terms into everyday Indonesian, briefly explaining them if needed).'
       : '\n\nWrite the entire report in clear, parent-friendly English.';
 
   const userPrompt = (INITIAL_ASSESSMENT_USER_PROMPT_TEMPLATE + languageInstruction)
+    .replace('{{H1}}', headings.h1)
+    .replace('{{H2}}', headings.h2)
+    .replace('{{H3}}', headings.h3)
     .replace('{{SUMMARY}}', summaryLines.join('\n'))
     .replace('{{RAW_JSON}}', JSON.stringify(input.initialObservation, null, 2));
 
