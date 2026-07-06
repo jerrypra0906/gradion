@@ -50,7 +50,8 @@ const updateChildSchema = z.object({
   name: z.string().min(1).optional(),
   birthdate: z.string().optional(),
   diagnosis: z.string().optional(),
-  monthly_quota: z.number().int().positive().optional(),
+  // Weekly hours target; coerce so form inputs sent as strings still work.
+  monthly_quota: z.coerce.number().int().positive().max(100).optional(),
 });
 
 const linkTherapistSchema = z.object({
@@ -697,14 +698,18 @@ export async function childrenRoutes(
         };
       }
 
-      // Only admin can update quota
+      // Admins and the owning parent can update the weekly hours target
+      // (parent ownership is already enforced above).
       const updateData: any = {};
       if (body.name) updateData.name = body.name;
       if (body.birthdate !== undefined) {
         updateData.birthdate = body.birthdate ? new Date(body.birthdate) : null;
       }
       if (body.diagnosis !== undefined) updateData.diagnosis = body.diagnosis;
-      if (body.monthly_quota !== undefined && user.role === 'admin') {
+      if (
+        body.monthly_quota !== undefined &&
+        (user.role === 'admin' || user.role === 'parent')
+      ) {
         updateData.monthly_quota = body.monthly_quota;
       }
 

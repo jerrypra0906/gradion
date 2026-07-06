@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ReactNode } from 'react';
 import { ChevronRight, LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +10,8 @@ interface DashboardStatCardProps {
   href?: string;
   accent?: 'teal' | 'gold' | 'navy';
   className?: string;
+  /** Optional control rendered top-right (ignored when href is set). */
+  action?: ReactNode;
 }
 
 const accentStyles = {
@@ -36,6 +39,7 @@ export function DashboardStatCard({
   href,
   accent = 'teal',
   className,
+  action,
 }: DashboardStatCardProps) {
   const styles = accentStyles[accent];
 
@@ -45,11 +49,13 @@ export function DashboardStatCard({
         <div className={cn('rounded-xl p-3', styles.iconBg)}>
           <Icon className={cn('w-5 h-5', styles.icon)} aria-hidden />
         </div>
-        {href && (
+        {href ? (
           <ChevronRight
             className="w-5 h-5 text-[#1A2B4C]/25 group-hover:text-[#00C1B2] transition-colors flex-shrink-0 mt-1"
             aria-hidden
           />
+        ) : (
+          action || null
         )}
       </div>
       <p className={cn('mt-4 font-montserrat text-3xl font-bold tracking-tight', styles.value)}>

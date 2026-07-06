@@ -8,6 +8,7 @@ import {
   Calendar,
   ClipboardList,
   Gauge,
+  Pencil,
   Plus,
   Sparkles,
   User,
@@ -143,6 +144,11 @@ export function ChildDetailPageContent() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // Weekly hours target editing (parent owner or admin)
+  const [targetEditOpen, setTargetEditOpen] = useState(false);
+  const [targetValue, setTargetValue] = useState('');
+  const [targetBusy, setTargetBusy] = useState(false);
+  const [targetError, setTargetError] = useState('');
 
   const currentWeekStart = useMemo(() => mondayWeekStartYmd(new Date()), []);
   const nextWeekStart = useMemo(() => addDaysYmd(currentWeekStart, 7), [currentWeekStart]);
@@ -529,6 +535,48 @@ export function ChildDetailPageContent() {
       setBehaviorError(err.response?.data?.error || 'Failed to save behaviors');
     } finally {
       setBehaviorSaving(false);
+    }
+  };
+
+  const canEditHoursTarget =
+    !!child &&
+    (user?.role === 'admin' || (user?.role === 'parent' && child.parent_id === user.id));
+
+  const openTargetEdit = () => {
+    if (!child) return;
+    setTargetValue(String(child.monthly_quota));
+    setTargetError('');
+    setTargetEditOpen(true);
+  };
+
+  const handleSaveHoursTarget = async () => {
+    if (!child || targetBusy) return;
+    const n = parseInt(targetValue.trim(), 10);
+    if (!Number.isFinite(n) || n < 1 || n > 100) {
+      setTargetError(
+        language === 'id'
+          ? 'Masukkan angka antara 1 dan 100.'
+          : 'Enter a number between 1 and 100.'
+      );
+      return;
+    }
+    try {
+      setTargetBusy(true);
+      setTargetError('');
+      const response = await apiClient.put<ApiResponse<Child>>(`/children/${child.id}`, {
+        monthly_quota: n,
+      });
+      if (!response.data.success) {
+        setTargetError(response.data.error || 'Failed to save');
+        return;
+      }
+      setTargetEditOpen(false);
+      // Re-fetch: the PUT response lacks computed fields like weekly_hours_executed.
+      await fetchChild();
+    } catch (err: any) {
+      setTargetError(err.response?.data?.error || 'Failed to save');
+    } finally {
+      setTargetBusy(false);
     }
   };
 
@@ -1001,6 +1049,21 @@ export function ChildDetailPageContent() {
             label={t('weeklyHoursTarget')}
             icon={Calendar}
             accent="navy"
+            action={
+              canEditHoursTarget ? (
+                <button
+                  type="button"
+                  className="rounded-lg p-1.5 text-[#1A2B4C]/40 hover:bg-[#1A2B4C]/5 hover:text-[#00C1B2] transition-colors"
+                  onClick={openTargetEdit}
+                  aria-label={
+                    language === 'id' ? 'Ubah target jam mingguan' : 'Edit weekly hours target'
+                  }
+                  title={language === 'id' ? 'Ubah target jam mingguan' : 'Edit weekly hours target'}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden />
+                </button>
+              ) : undefined
+            }
           />
           <DashboardStatCard
             value={activityLogs.length}
@@ -1507,6 +1570,66 @@ export function ChildDetailPageContent() {
           </div>
         )}
       </div>
+
+      {targetEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[#1A2B4C]">{t('weeklyHoursTarget')}</h2>
+              <p className="mt-0.5 text-xs text-[#1A2B4C]/60">
+                {language === 'id'
+                  ? 'Berapa jam latihan di rumah yang ditargetkan per minggu untuk anak ini.'
+                  : 'How many hours of home practice you aim for each week for this child.'}
+              </p>
+            </div>
+
+            {targetError && (
+              <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {targetError}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                inputMode="numeric"
+                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-lg font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/40"
+                value={targetValue}
+                onChange={(e) => setTargetValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleSaveHoursTarget();
+                }}
+                autoFocus
+              />
+              <span className="text-sm text-[#1A2B4C]/70">
+                {language === 'id' ? 'jam / minggu' : 'hours / week'}
+              </span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTargetEditOpen(false)}
+                disabled={targetBusy}
+              >
+                {t('cancel')}
+              </Button>
+              <Button size="sm" onClick={() => void handleSaveHoursTarget()} disabled={targetBusy}>
+                {targetBusy
+                  ? language === 'id'
+                    ? 'Menyimpan…'
+                    : 'Saving…'
+                  : language === 'id'
+                    ? 'Simpan'
+                    : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
