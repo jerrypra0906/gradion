@@ -6,6 +6,11 @@ import { EmailService } from '../services/email.service.js';
 import { formatErrorMessage, getUserFacingError } from '../utils/errorResponse.js';
 import { Prisma, SubscriptionPlan } from '@prisma/client';
 import { listAutismCases, seedMockAutismCases } from '../services/abaAutismCase.service.js';
+import {
+  mergeMasterPrograms,
+  setMasterProgramArchived,
+  updateMasterProgram,
+} from '../services/abaMasterProgram.service.js';
 import { UserService } from '../services/user.service.js';
 import { Role } from '../types/index.js';
 
@@ -22,14 +27,34 @@ export async function adminRoutes(
     '/aba-master-programs',
     { preHandler: [authenticate, requireRole('admin')] },
     async (request) => {
-      const q = (request.query || {}) as { lang?: string; search?: string; take?: string; skip?: string };
+      const q = (request.query || {}) as {
+        lang?: string;
+        search?: string;
+        take?: string;
+        skip?: string;
+        status?: string;
+      };
       const lang = q.lang === 'en' ? 'en' : 'id';
       const search = String(q.search || '').trim();
       const take = Math.max(1, Math.min(500, parseInt(String(q.take || '100'), 10) || 100));
       const skip = Math.max(0, parseInt(String(q.skip || '0'), 10) || 0);
+      const status =
+        q.status === 'curated' || q.status === 'archived' || q.status === 'all'
+          ? q.status
+          : 'active';
+
+      const statusWhere: Prisma.AbaMasterProgramWhereInput =
+        status === 'curated'
+          ? { is_curated: true, is_archived: false, merged_into_id: null }
+          : status === 'archived'
+            ? { is_archived: true }
+            : status === 'all'
+              ? {}
+              : { is_archived: false, merged_into_id: null };
 
       const where: Prisma.AbaMasterProgramWhereInput = {
         language: lang,
+        ...statusWhere,
         ...(search
           ? {
               OR: [
@@ -44,7 +69,7 @@ export async function adminRoutes(
       const [rows, total] = await Promise.all([
         prisma.abaMasterProgram.findMany({
           where,
-          orderBy: { updated_at: 'desc' },
+          orderBy: [{ is_curated: 'desc' }, { usage_count: 'desc' }, { updated_at: 'desc' }],
           take,
           skip,
         }),
@@ -52,6 +77,83 @@ export async function adminRoutes(
       ]);
 
       return { success: true, data: { rows, total } };
+    }
+  );
+
+  // Edit a master program (marks it curated and logs before/after for AI learning).
+  fastify.patch(
+    '/aba-master-programs/:id',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const user = (request as any).user!;
+      const id = String((request.params as any).id || '');
+
+      const bodySchema = z.object({
+        name: z.string().trim().min(1).max(200).optional(),
+        domain: z.string().trim().max(120).nullable().optional(),
+        rationale: z.string().trim().max(1000).nullable().optional(),
+        targets: z.array(z.string().trim().max(300)).max(20).optional(),
+        recommended_trials_per_day: z.number().int().min(1).max(100).nullable().optional(),
+        materials: z.array(z.string().trim().max(300)).max(20).optional(),
+        demo_video_url: z.string().trim().url().max(500).nullable().or(z.literal('').transform(() => null)).optional(),
+      });
+      const parsed = bodySchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        reply.code(400);
+        return { success: false, error: formatErrorMessage(parsed.error, 'Invalid input') };
+      }
+
+      const result = await updateMasterProgram({ id, editorId: user.id, patch: parsed.data });
+      if (!result.ok) {
+        reply.code(result.code || 400);
+        return { success: false, error: result.error, conflict_id: result.conflictId };
+      }
+      return { success: true, data: { row: result.row } };
+    }
+  );
+
+  // Archive / restore a master program (archived programs are hidden from AI generation).
+  fastify.post(
+    '/aba-master-programs/:id/archive',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const id = String((request.params as any).id || '');
+      const body = (request.body || {}) as { archived?: boolean };
+      const archived = body.archived !== false;
+
+      const result = await setMasterProgramArchived({ id, archived });
+      if (!result.ok) {
+        reply.code(result.code || 400);
+        return { success: false, error: result.error, conflict_id: result.conflictId };
+      }
+      return { success: true, data: { row: result.row } };
+    }
+  );
+
+  // Merge duplicate master programs into one surviving program.
+  fastify.post(
+    '/aba-master-programs/merge',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const bodySchema = z.object({
+        keep_id: z.string().min(1),
+        merge_ids: z.array(z.string().min(1)).min(1).max(50),
+      });
+      const parsed = bodySchema.safeParse(request.body || {});
+      if (!parsed.success) {
+        reply.code(400);
+        return { success: false, error: formatErrorMessage(parsed.error, 'Invalid input') };
+      }
+
+      const result = await mergeMasterPrograms({
+        keepId: parsed.data.keep_id,
+        mergeIds: parsed.data.merge_ids,
+      });
+      if (!result.ok) {
+        reply.code(result.code || 400);
+        return { success: false, error: result.error, conflict_id: result.conflictId };
+      }
+      return { success: true, data: { row: result.row } };
     }
   );
 

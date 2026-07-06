@@ -173,6 +173,8 @@ Hard requirements:
 - If clinical_review_comments_json is provided, incorporate therapist/parent review feedback (especially flagged items) into program selection, targets, and parent coaching.
 - Include a boolean field "mainstream_goal_met" ONLY when the assessment + notes strongly indicate the child is ready to transition toward mainstream-style routines with minimal ABA intensity. Otherwise set false.
 - If master_program_library_json is provided and a program clearly matches an existing master, REUSE that master program by copying its id + core fields (do not invent a new id).
+- Masters with "curated": true are admin-approved exemplars. Prefer reusing curated masters when they fit the child. When you create a NEW program, imitate the curated masters' naming style, tone, target structure, materials style, and level of detail.
+- If admin_curation_examples_json is provided, it shows how clinic admins corrected AI-generated programs (before -> after). Learn from these corrections and apply the same standards (wording, specificity, realistic trials/materials) to EVERY program in this plan.
 - For the FIRST weekly program (is_first_program=true), prioritize foundational programs similar to the reference cases (reinforcer development, waiting/tolerance, imitation, receptive instructions) before advanced skills.
 
 JSON shape (all keys required unless empty arrays):
@@ -270,6 +272,7 @@ export async function generateWeeklyAbaPlanJson(input: {
   learningInsights?: unknown | null;
   similarAutismCases?: unknown | null;
   masterPrograms?: unknown | null;
+  curationExamples?: unknown | null;
   isFirstProgram?: boolean;
   statedGoals?: unknown | null;
   clinicalReviewComments?: unknown | null;
@@ -299,6 +302,11 @@ export async function generateWeeklyAbaPlanJson(input: {
       ? 'null'
       : JSON.stringify(input.masterPrograms);
 
+  const curation =
+    input.curationExamples === null || input.curationExamples === undefined
+      ? 'null'
+      : JSON.stringify(input.curationExamples);
+
   const observation =
     input.initialObservationJson === null || input.initialObservationJson === undefined
       ? 'null'
@@ -324,6 +332,9 @@ is_first_program: ${input.isFirstProgram ? 'true' : 'false'}
 
 master_program_library_json:
 ${master}
+
+admin_curation_examples_json (how admins corrected AI programs — imitate the "after" style):
+${curation}
 
 similar_autism_cases_json (reference exemplars from master case library):
 ${similarCases}

@@ -8,7 +8,11 @@ import {
   updateTokenUsage,
 } from './ai.service.js';
 import { generateWeeklyAbaPlanJson } from './abaProgram.service.js';
-import { listMasterPrograms, syncWeeklyPlanToMasterPrograms } from './abaMasterProgram.service.js';
+import {
+  getCurationLearningExamples,
+  listMasterPrograms,
+  syncWeeklyPlanToMasterPrograms,
+} from './abaMasterProgram.service.js';
 import {
   buildObservationText,
   findSimilarAutismCases,
@@ -121,7 +125,10 @@ export async function generateAbaWeekForChild(input: {
     return { ok: false, error: quota.reason || 'Insufficient AI tokens', code: 403 };
   }
 
-  const masterPrograms = await listMasterPrograms({ language: input.lang, take: 120 });
+  const [masterPrograms, curationExamples] = await Promise.all([
+    listMasterPrograms({ language: input.lang, take: 120 }),
+    getCurationLearningExamples({ language: input.lang, take: 6 }),
+  ]);
 
   const ai = await generateWeeklyAbaPlanJson({
     language: input.lang,
@@ -136,6 +143,7 @@ export async function generateAbaWeekForChild(input: {
     learningInsights,
     similarAutismCases: similarCases,
     masterPrograms,
+    curationExamples,
     isFirstProgram,
     statedGoals: goals,
     clinicalReviewComments: learningInsights?.clinical_reviews ?? null,

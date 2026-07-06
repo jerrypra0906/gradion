@@ -40,6 +40,7 @@ model User {
   learningModuleProgress LearningModuleProgress[]
   abaProgramSessions   ChildAbaProgramSession[]
   aiTokenUsageLogs     AITokenUsageLog[]
+  masterProgramEdits   AbaMasterProgramEdit[]   @relation("MasterProgramEditor")
 
   @@index([referral_code])
   @@index([referred_by_code])
@@ -142,12 +143,40 @@ model AbaMasterProgram {
   materials                 Json?
   data_collection           Json?
   demo_video_url            String?
+  /// Admin curation: curated masters are AI exemplars and are never overwritten by generation sync.
+  is_curated                Boolean  @default(false)
+  is_archived               Boolean  @default(false)
+  /// When merged into another master, points at the surviving master's id (sync follows this redirect).
+  merged_into_id            String?
+  /// How many generated weekly plans reused this master (feeds prompt ranking).
+  usage_count               Int      @default(0)
   created_at                DateTime @default(now())
   updated_at                DateTime @updatedAt
 
+  edits AbaMasterProgramEdit[]
+
   @@unique([language, canonical_key])
   @@index([language])
+  @@index([language, is_archived])
   @@map("aba_master_programs")
+}
+
+/// Before/after snapshots of admin edits to master programs — fed to the AI as
+/// "how admins correct programs" so future generations learn content and style.
+model AbaMasterProgramEdit {
+  id          Int      @id @default(autoincrement())
+  master_id   String
+  editor_id   Int?
+  before_json Json
+  after_json  Json
+  created_at  DateTime @default(now())
+
+  master AbaMasterProgram @relation(fields: [master_id], references: [id], onDelete: Cascade)
+  editor User?            @relation("MasterProgramEditor", fields: [editor_id], references: [id], onDelete: SetNull)
+
+  @@index([master_id])
+  @@index([created_at])
+  @@map("aba_master_program_edits")
 }
 
 /// One calendar week of parent-led ABA practice, generated from assessment + prior notes.
