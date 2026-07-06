@@ -299,23 +299,24 @@ async function generateJsonClaudeVision(
   }
 }
 
-export async function translateInitialAssessmentMarkdownToIndonesian(
-  englishMarkdown: string
+export async function translateInitialAssessmentMarkdown(
+  sourceMarkdown: string,
+  toLanguage: 'en' | 'id'
 ): Promise<{ reportMarkdown: string; tokensUsed: number } | null> {
-  const system =
-    'You are a professional medical/clinical translator. Translate English to Bahasa Indonesia accurately and naturally. Preserve Markdown structure (headings, lists, emphasis). Do not add new content. Do not remove content.';
+  const targetName = toLanguage === 'id' ? 'Bahasa Indonesia' : 'English';
+  const system = `You are a professional medical/clinical translator working between English and Bahasa Indonesia. Translate accurately and naturally into ${targetName}. Preserve Markdown structure (headings, lists, emphasis). Do not add new content. Do not remove content.`;
 
-  const user = `Translate the following Markdown report into Bahasa Indonesia.
+  const user = `Translate the following Markdown report into ${targetName}.
 
 Rules:
 - Preserve Markdown formatting and structure.
-- Translate EVERYTHING into Bahasa Indonesia, including section headings/titles — no English may remain (except personal names).
+- Translate EVERYTHING into ${targetName}, including section headings/titles — nothing may remain in the source language (except personal names).
 - Keep names as-is.
 - Do not add commentary or extra sections.
 - Output ONLY the translated Markdown.
 
 --- BEGIN REPORT ---
-${englishMarkdown}
+${sourceMarkdown}
 --- END REPORT ---`;
 
   // Source reports can be up to ~1800 tokens; 1100 truncated longer translations.

@@ -1165,6 +1165,17 @@ export function ChildDetailPageContent() {
                     {language === 'id'
                       ? 'Laporan AI sedang menunggu peninjauan admin. Laporan akan terlihat setelah disetujui.'
                       : 'This AI report is awaiting admin review. It will appear once approved.'}
+                    {user?.role === 'admin' && (
+                      <>
+                        {' '}
+                        <Link
+                          href="/dashboard/admin/ai-content-review"
+                          className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                        >
+                          {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
+                        </Link>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -1199,6 +1210,17 @@ export function ChildDetailPageContent() {
                 {language === 'id'
                   ? 'Laporan asesmen sedang ditinjau admin. Program mingguan akan dibuat otomatis dan terlihat setelah disetujui.'
                   : 'The assessment is awaiting admin review. The weekly program is being created automatically and will appear once approved.'}
+                {user?.role === 'admin' && (
+                  <>
+                    {' '}
+                    <Link
+                      href="/dashboard/admin/ai-content-review"
+                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                    >
+                      {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
+                    </Link>
+                  </>
+                )}
               </div>
             )}
 
@@ -1240,6 +1262,17 @@ export function ChildDetailPageContent() {
                 {language === 'id'
                   ? 'Program mingguan ini sedang menunggu peninjauan admin. Program akan terlihat setelah disetujui.'
                   : 'This weekly program is awaiting admin review. It will appear once approved.'}
+                {user?.role === 'admin' && (
+                  <>
+                    {' '}
+                    <Link
+                      href="/dashboard/admin/ai-content-review"
+                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                    >
+                      {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
+                    </Link>
+                  </>
+                )}
               </div>
             )}
 

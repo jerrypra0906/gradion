@@ -7,7 +7,7 @@ import { logger } from '../utils/logger.js';
 import {
   generateInitialAssessmentFromObservation,
   getLastTextGenerationError,
-  translateInitialAssessmentMarkdownToIndonesian,
+  translateInitialAssessmentMarkdown,
   hasAIAccess,
   checkTokenQuota,
   updateTokenUsage,
@@ -389,19 +389,21 @@ export async function childrenRoutes(
       let reportMarkdown: string;
       let tokensUsed: number;
 
-      if (lang === 'id' && mode === 'translate') {
-        if (!child.initial_assessment_report) {
+      if (mode === 'translate') {
+        // Translate from the other language's existing report — never regenerate
+        // here, so translation can safely preserve the admin review status.
+        const sourceMarkdown =
+          lang === 'id' ? child.initial_assessment_report : child.initial_assessment_report_id;
+        if (!sourceMarkdown) {
           reply.code(400);
           return {
             success: false,
             error:
-              'No English AI Initial Assessment found to translate. Switch to English and generate it first, then translate.',
+              'No AI Initial Assessment found in the other language to translate. Generate it first.',
           };
         }
-        logger.info({ childId }, 'Translating English assessment to Indonesian');
-        const translated = await translateInitialAssessmentMarkdownToIndonesian(
-          child.initial_assessment_report
-        );
+        logger.info({ childId, lang }, 'Translating assessment');
+        const translated = await translateInitialAssessmentMarkdown(sourceMarkdown, lang);
         if (!translated) {
           reply.code(config.ai.anthropicApiKey ? 502 : 503);
           return {
@@ -434,36 +436,46 @@ export async function childrenRoutes(
 
       await updateTokenUsage(billingUserId, tokensUsed, {
         childId,
-        feature: lang === 'id' && mode === 'translate' ? 'assessment_translation' : 'initial_assessment',
+        feature: mode === 'translate' ? 'assessment_translation' : 'initial_assessment',
       });
 
+      // Re-generating resets the report to "pending" admin review. Translating
+      // does NOT: it preserves the approved content's meaning, and resetting
+      // here silently un-approved reports whenever the child page auto-filled
+      // a missing language version.
+      const isTranslate = mode === 'translate';
       const updated = await prisma.child.update({
         where: { id: childId },
         data: {
           ...(lang === 'id'
             ? { initial_assessment_report_id: reportMarkdown }
             : { initial_assessment_report: reportMarkdown }),
-          // Re-generating/translating resets the report to "pending" admin review.
-          assessment_review_status: 'pending',
-          assessment_reviewed_at: null,
-          assessment_reviewed_by: null,
+          ...(isTranslate
+            ? {}
+            : {
+                assessment_review_status: 'pending',
+                assessment_reviewed_at: null,
+                assessment_reviewed_by: null,
+              }),
         },
         include: {
           parent: { select: { id: true, name: true, email: true } },
         },
       });
 
-      // Hide the freshly generated content until an admin approves it in the
-      // AI Content Review page. Admins get the same gated view as parents.
-      const gatedUpdated =
-        user.role === 'parent' || user.role === 'admin'
-          ? {
-              ...updated,
-              initial_assessment_report: null,
-              initial_assessment_report_id: null,
-              has_pending_assessment: true,
-            }
-          : updated;
+      // Hide unapproved content until an admin approves it in the AI Content
+      // Review page. Admins get the same gated view as parents.
+      const gatePending =
+        (user.role === 'parent' || user.role === 'admin') &&
+        updated.assessment_review_status !== 'approved';
+      const gatedUpdated = gatePending
+        ? {
+            ...updated,
+            initial_assessment_report: null,
+            initial_assessment_report_id: null,
+            has_pending_assessment: true,
+          }
+        : { ...updated, has_pending_assessment: false };
 
       if (mode === 'generate') {
         await ensureFirstAbaWeekForChild({
