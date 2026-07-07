@@ -185,6 +185,18 @@ export function AbaProgramPageContent() {
     return m;
   }, [week]);
 
+  // Full program records, so the session shows the same explanation
+  // (name, rationale, targets, materials) as the child-page program cards.
+  const programById = useMemo(() => {
+    const m = new Map<string, any>();
+    const progs = (week?.plan_json as any)?.programs;
+    if (!Array.isArray(progs)) return m;
+    for (const p of progs) {
+      if (p?.id != null) m.set(String(p.id), p);
+    }
+    return m;
+  }, [week]);
+
   useEffect(() => {
     if (!user || !childId || !weekId) return;
     (async () => {
@@ -368,6 +380,7 @@ export function AbaProgramPageContent() {
 
   const isLast = idx >= filteredActivities.length - 1;
   const linkedId = current.linked_program_id ? String(current.linked_program_id) : '';
+  const linkedProgram = linkedId ? programById.get(linkedId) || null : null;
   const rawVideoUrl = (() => {
     const act = String(current.video_url || '').trim();
     if (act) return act;
@@ -389,8 +402,10 @@ export function AbaProgramPageContent() {
           icon={Target}
           title={current.title}
           subtitle={
-            current.linked_program_id
-              ? `Program ID: ${current.linked_program_id}`
+            linkedProgram
+              ? `${String(linkedProgram.name ?? '')}${
+                  linkedProgram.domain ? ` · ${String(linkedProgram.domain)}` : ''
+                }`
               : language === 'id'
                 ? 'Sesi terpandu program ABA'
                 : 'Guided ABA program session'
@@ -435,6 +450,42 @@ export function AbaProgramPageContent() {
             {error}
           </div>
         )}
+
+        {linkedProgram &&
+          (linkedProgram.rationale ||
+            (Array.isArray(linkedProgram.targets) && linkedProgram.targets.length > 0) ||
+            (Array.isArray(linkedProgram.materials) && linkedProgram.materials.length > 0)) && (
+            <DashboardSectionCard
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <Target className="h-5 w-5 text-[#00C1B2]" aria-hidden />
+                  {language === 'id' ? 'Tentang program ini' : 'About this program'}
+                </span>
+              }
+            >
+              <div className="space-y-3 text-sm text-[#1A2B4C]/85">
+                {linkedProgram.rationale ? (
+                  <p className="text-sm leading-relaxed">{String(linkedProgram.rationale)}</p>
+                ) : null}
+                {Array.isArray(linkedProgram.targets) && linkedProgram.targets.length > 0 && (
+                  <div className="text-xs">
+                    <div className="font-semibold text-[#1A2B4C]">
+                      {language === 'id' ? 'Target' : 'Targets'}
+                    </div>
+                    <div className="mt-1">{(linkedProgram.targets as string[]).join(' · ')}</div>
+                  </div>
+                )}
+                {Array.isArray(linkedProgram.materials) && linkedProgram.materials.length > 0 && (
+                  <div className="text-xs">
+                    <div className="font-semibold text-[#1A2B4C]">
+                      {language === 'id' ? 'Alat' : 'Materials'}
+                    </div>
+                    <div className="mt-1">{(linkedProgram.materials as string[]).join(' · ')}</div>
+                  </div>
+                )}
+              </div>
+            </DashboardSectionCard>
+          )}
 
         <DashboardSectionCard
           title={

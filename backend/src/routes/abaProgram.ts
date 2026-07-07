@@ -25,6 +25,7 @@ import {
 } from '../services/abaProgramLearning.service.js';
 import { syncParentLogForCompletedSession } from '../services/parentLogFromAba.service.js';
 import { generateAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
+import { computeWeekProgramProgress } from '../services/abaProgramProgress.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,15 +108,22 @@ export async function abaProgramRoutes(
           },
         });
 
+        // Execution counts + scores per program, and whether the parent may
+        // generate the next program (computed before any content gating).
+        const withProgress = weeks.map((w) => ({
+          ...w,
+          program_progress: computeWeekProgramProgress(w),
+        }));
+
         // Parents only see a week's plan once an admin approves it.
         const gatedWeeks =
           user.role === 'parent'
-            ? weeks.map((w) =>
+            ? withProgress.map((w) =>
                 w.review_status === 'approved'
                   ? w
                   : { ...w, plan_json: null, therapy_notes_json: null }
               )
-            : weeks;
+            : withProgress;
 
         return { success: true, data: { weeks: gatedWeeks } };
       } catch (error: unknown) {
@@ -171,6 +179,7 @@ export async function abaProgramRoutes(
           userId: billingUserId,
           weekStartYmd: body.week_start,
           lang,
+          bypassProgressGate: user.role === 'admin',
         });
 
         if (!result.ok) {

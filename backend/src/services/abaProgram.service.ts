@@ -176,6 +176,7 @@ Hard requirements:
 - Masters with "curated": true are admin-approved exemplars. Prefer reusing curated masters when they fit the child. When you create a NEW program, imitate the curated masters' naming style, tone, target structure, materials style, and level of detail.
 - If admin_curation_examples_json is provided, it shows how clinic admins corrected AI-generated programs (before -> after). Learn from these corrections and apply the same standards (wording, specificity, realistic trials/materials) to EVERY program in this plan.
 - For the FIRST weekly program (is_first_program=true), prioritize foundational programs similar to the reference cases (reinforcer development, waiting/tolerance, imitation, receptive instructions) before advanced skills.
+- If carry_over_programs_json is provided (the child scored below the advancement threshold), you MUST include ALL of those programs in this plan — keep their ids, names, and core content identical (you may simplify targets or reduce trials slightly for reinforcement) — and ADD 2-3 NEW complementary programs that address the observed weaknesses.
 
 JSON shape (all keys required unless empty arrays):
 {
@@ -273,6 +274,7 @@ export async function generateWeeklyAbaPlanJson(input: {
   similarAutismCases?: unknown | null;
   masterPrograms?: unknown | null;
   curationExamples?: unknown | null;
+  carryOverPrograms?: unknown | null;
   isFirstProgram?: boolean;
   statedGoals?: unknown | null;
   clinicalReviewComments?: unknown | null;
@@ -307,6 +309,11 @@ export async function generateWeeklyAbaPlanJson(input: {
       ? 'null'
       : JSON.stringify(input.curationExamples);
 
+  const carryOver =
+    input.carryOverPrograms === null || input.carryOverPrograms === undefined
+      ? 'null'
+      : JSON.stringify(input.carryOverPrograms);
+
   const observation =
     input.initialObservationJson === null || input.initialObservationJson === undefined
       ? 'null'
@@ -335,6 +342,9 @@ ${master}
 
 admin_curation_examples_json (how admins corrected AI programs — imitate the "after" style):
 ${curation}
+
+carry_over_programs_json (score below threshold — keep ALL of these in the new plan and add 2-3 new ones):
+${carryOver}
 
 similar_autism_cases_json (reference exemplars from master case library):
 ${similarCases}

@@ -155,15 +155,15 @@ export function ChildDetailPageContent() {
     : null;
   const currentWeekEndYmd = currentWeekStartYmd ? addDaysYmd(currentWeekStartYmd, 6) : null;
   const currentWeekExpired = Boolean(currentWeekEndYmd && todayYmd > currentWeekEndYmd);
-  // Generate targets: refresh the running program in place; start a NEW
-  // program (dated today) once the current one has run its 7 days.
-  const currentWeekStart =
-    !currentWeekRow || currentWeekExpired ? todayYmd : (currentWeekStartYmd as string);
-  const canPlanNextWeek =
-    Boolean(currentWeekRow) &&
-    (currentWeekRow?.status === 'completed' || currentWeekExpired) &&
-    currentWeekStartYmd !== todayYmd &&
-    !currentWeekRow?.mainstream_goal_met;
+  // The current program stays active until a NEW one is generated, even past
+  // its period end. Generating a new program is gated on recorded practice
+  // (computed server-side): avg >= 75% with every program run >= 3x, or
+  // avg < 75% with every program run >= 6x (old programs then carry over).
+  const progressGate = currentWeekRow?.program_progress || null;
+  const isAdminViewer = user?.role === 'admin';
+  const canGenerateNewProgram =
+    !currentWeekRow || isAdminViewer || Boolean(progressGate?.can_generate_new);
+  const newProgramIsSameDay = Boolean(currentWeekRow) && currentWeekStartYmd === todayYmd;
   const previousWeeks = useMemo(() => abaWeeks.slice(1), [abaWeeks]);
 
   // Auto-translate assessment when the selected language version is missing
@@ -247,7 +247,7 @@ export function ChildDetailPageContent() {
     if (abaAutoGenAttemptedRef.current) return;
 
     abaAutoGenAttemptedRef.current = true;
-    void handleGenerateAbaWeek(currentWeekStart);
+    void handleGenerateAbaWeek(todayYmd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     child?.id,
@@ -258,7 +258,7 @@ export function ChildDetailPageContent() {
     abaLoading,
     abaGenerating,
     loading,
-    currentWeekStart,
+    todayYmd,
     language,
     user?.id,
   ]);
@@ -476,7 +476,7 @@ export function ChildDetailPageContent() {
         // family gets both at once. Best-effort — failures surface in the ABA
         // section and don't undo the assessment.
         if (mode === 'generate' && abaWeeks.length === 0) {
-          await handleGenerateAbaWeek(currentWeekStart);
+          await handleGenerateAbaWeek(todayYmd);
         }
       } else {
         setAssessmentError(response.data.error || 'Failed to generate assessment');
@@ -1237,33 +1237,69 @@ export function ChildDetailPageContent() {
                 </span>
                 {currentWeekRow && currentWeekExpired && (
                   <span className="ml-2 rounded-full border border-[#FFB900]/40 bg-[#FFB900]/15 px-2 py-0.5 text-xs font-medium text-[#8A6100]">
-                    {language === 'id' ? 'Periode berakhir' : 'Period ended'}
+                    {language === 'id'
+                      ? 'Periode berakhir · masih aktif'
+                      : 'Period ended · still active'}
                   </span>
                 )}
                 {abaLoading && <span className="ml-2 text-xs text-[#1A2B4C]/50">({t('loading')}…)</span>}
               </div>
               <div className="flex flex-wrap gap-2">
+                {currentWeekRow && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleGenerateAbaWeek(currentWeekStartYmd as string)}
+                    disabled={abaGenerating || !hasAssessmentForAba}
+                  >
+                    {abaGenerating
+                      ? t('abaProgramGenerating')
+                      : language === 'id'
+                        ? 'Segarkan program ini'
+                        : 'Refresh this program'}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="brand"
-                  onClick={() => handleGenerateAbaWeek(currentWeekStart)}
-                  disabled={abaGenerating || !hasAssessmentForAba}
+                  onClick={() => handleGenerateAbaWeek(todayYmd)}
+                  disabled={
+                    abaGenerating ||
+                    !hasAssessmentForAba ||
+                    (Boolean(currentWeekRow) && (!canGenerateNewProgram || newProgramIsSameDay))
+                  }
                 >
                   {abaGenerating
                     ? t('abaProgramGenerating')
-                    : !currentWeekRow || currentWeekExpired
-                      ? language === 'id'
-                        ? 'Buat program baru'
-                        : 'Generate new program'
-                      : t('abaProgramGenerate')}
+                    : language === 'id'
+                      ? 'Buat program baru'
+                      : 'Generate new program'}
                 </Button>
-                {canPlanNextWeek && (
-                  <Button size="sm" variant="outline" onClick={() => handleGenerateAbaWeek(todayYmd)}>
-                    {t('abaProgramNextWeek')}
-                  </Button>
-                )}
               </div>
             </div>
+
+            {currentWeekRow && progressGate && !progressGate.can_generate_new && !newProgramIsSameDay && (
+              <div className="rounded-xl border border-[#E5E8EB] bg-white px-3 py-2.5 text-xs text-[#1A2B4C]/80">
+                {language === 'id'
+                  ? `Program baru terbuka jika rata-rata skor ≥75% dan setiap program dijalankan minimal 3× — atau, jika rata-rata di bawah 75%, setelah setiap program dijalankan 6× (program lama akan dibawa lagi ke program baru dengan tambahan program baru). Saat ini: ${
+                      progressGate.avg_score_pct !== null
+                        ? `rata-rata skor ${progressGate.avg_score_pct}%, `
+                        : ''
+                    }program paling jarang baru dijalankan ${progressGate.min_executions}× dari ${progressGate.required_executions}×.`
+                  : `A new program unlocks when the average score is ≥75% and every program has been run at least 3 times — or, if the average is below 75%, once every program has been run 6 times (the current programs then carry over into the new plan with additions). Right now: ${
+                      progressGate.avg_score_pct !== null
+                        ? `average score ${progressGate.avg_score_pct}%, `
+                        : ''
+                    }the least-practiced program has ${progressGate.min_executions} of ${progressGate.required_executions} runs.`}
+                {isAdminViewer && (
+                  <span className="ml-1 text-[#1A2B4C]/50">
+                    {language === 'id'
+                      ? '(Sebagai admin, Anda tetap bisa membuat program baru.)'
+                      : '(As an admin you can still generate a new program.)'}
+                  </span>
+                )}
+              </div>
+            )}
 
             {currentWeekRow?.mainstream_goal_met && (
               <div className="rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-3 py-2 text-sm text-[#1A2B4C]">
@@ -1344,7 +1380,11 @@ export function ChildDetailPageContent() {
                         return (currentWeekRow.plan_json as any).programs.map((p: any) => {
                           const pid = String(p.id);
                           const expanded = abaExpandedProgramId === pid;
-                          const executed = counts.get(pid) || 0;
+                          const prog = progressGate?.per_program?.find(
+                            (x) => x.program_id === pid
+                          );
+                          const executed = prog ? prog.executions : counts.get(pid) || 0;
+                          const scorePct = prog?.score_pct ?? null;
                           const demoUrl =
                             typeof p.demo_video_url === 'string' && p.demo_video_url.trim()
                               ? p.demo_video_url.trim()
@@ -1366,7 +1406,16 @@ export function ChildDetailPageContent() {
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
                                   <div className="text-xs font-medium text-[#00A896]">
-                                    {language === 'id' ? 'Dilakukan' : 'Executed'}: {executed}
+                                    {language === 'id' ? 'Dijalankan' : 'Runs'}: {executed}×
+                                    {scorePct !== null && (
+                                      <span
+                                        className={
+                                          scorePct >= 75 ? 'ml-1.5 text-[#00A896]' : 'ml-1.5 text-[#8A6100]'
+                                        }
+                                      >
+                                        · {language === 'id' ? 'skor' : 'score'} {scorePct}%
+                                      </span>
+                                    )}
                                   </div>
                                   <span className="text-sm text-[#1A2B4C]/40" aria-hidden>
                                     {expanded ? '▾' : '▸'}

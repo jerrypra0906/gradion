@@ -197,6 +197,23 @@ export type AbaProgramSessionMode = 'guided' | 'upload';
 export type AbaProgramSessionStatus = 'in_progress' | 'completed' | 'cancelled';
 export type AiReviewStatus = 'pending' | 'approved' | 'rejected';
 
+export interface AbaProgramProgress {
+  program_id: string;
+  program_name: string;
+  executions: number;
+  trials: number;
+  score_pct: number | null;
+}
+
+export interface AbaWeekProgramProgress {
+  per_program: AbaProgramProgress[];
+  avg_score_pct: number | null;
+  min_executions: number;
+  required_executions: number;
+  can_generate_new: boolean;
+  mode: 'advance' | 'reinforce';
+}
+
 export interface AbaProgramWeek {
   id: number;
   child_id: number;
@@ -209,6 +226,7 @@ export interface AbaProgramWeek {
   created_at: string;
   updated_at: string;
   sessions?: AbaProgramSession[];
+  program_progress?: AbaWeekProgramProgress | null;
 }
 
 export interface AbaProgramSession {

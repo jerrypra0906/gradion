@@ -22,6 +22,7 @@ import {
   getEnhancedLearningContextForChild,
   getPreviousWeekSessionContext,
 } from './abaProgramLearning.service.js';
+import { computeWeekProgramProgress } from './abaProgramProgress.service.js';
 
 /** Programs run for 7 days from the day they are generated (not calendar weeks). */
 export function todayYmd(d: Date = new Date()) {
@@ -50,6 +51,8 @@ export async function generateAbaWeekForChild(input: {
   userId: number;
   weekStartYmd: string;
   lang: 'en' | 'id';
+  /** Admins may start a new program before the progress thresholds are met. */
+  bypassProgressGate?: boolean;
 }): Promise<GenerateAbaWeekResult> {
   if (!config.features.ai) {
     return { ok: false, error: 'AI features are disabled', code: 503 };
@@ -82,6 +85,39 @@ export async function generateAbaWeekForChild(input: {
         'Initial assessment is missing. Generate the Initial Assessment on the child page first.',
       code: 400,
     };
+  }
+
+  // Starting a NEW program (a later week_start than the latest one) is gated on
+  // recorded practice: avg score >= 75% with every program run >= 3 times, or
+  // avg < 75% with every program run >= 6 times — in which case the old
+  // programs carry over into the new plan. Refreshing the current program
+  // (same week_start) is never gated.
+  let carryOverPrograms: unknown | null = null;
+  const latestWeek = await prisma.childAbaProgramWeek.findFirst({
+    where: { child_id: input.childId },
+    orderBy: { week_start: 'desc' },
+    include: { sessions: { orderBy: { started_at: 'desc' }, take: 50 } },
+  });
+  if (latestWeek && weekStart.getTime() > new Date(latestWeek.week_start).getTime()) {
+    const progress = computeWeekProgramProgress(latestWeek);
+    if (progress) {
+      if (!progress.can_generate_new && !input.bypassProgressGate) {
+        const msg =
+          input.lang === 'id'
+            ? `Belum bisa membuat program baru. Setiap program perlu dijalankan minimal ${progress.required_executions}× ` +
+              `(saat ini program yang paling jarang baru ${progress.min_executions}×${
+                progress.avg_score_pct !== null ? `, rata-rata skor ${progress.avg_score_pct}%` : ''
+              }). Lanjutkan latihan program saat ini dulu.`
+            : `Not ready for a new program yet. Every program needs at least ${progress.required_executions} recorded runs ` +
+              `(the least-practiced one has ${progress.min_executions}${
+                progress.avg_score_pct !== null ? `; average score ${progress.avg_score_pct}%` : ''
+              }). Keep practicing the current program first.`;
+        return { ok: false, error: msg, code: 409 };
+      }
+      if (progress.mode === 'reinforce') {
+        carryOverPrograms = (latestWeek.plan_json as { programs?: unknown[] } | null)?.programs ?? null;
+      }
+    }
   }
 
   const prevWeek = await prisma.childAbaProgramWeek.findFirst({
@@ -140,6 +176,7 @@ export async function generateAbaWeekForChild(input: {
     similarAutismCases: similarCases,
     masterPrograms,
     curationExamples,
+    carryOverPrograms,
     isFirstProgram,
     statedGoals: goals,
     clinicalReviewComments: learningInsights?.clinical_reviews ?? null,
