@@ -88,6 +88,59 @@ export async function listMasterPrograms(input: { language: MasterLang; take?: n
 }
 
 /**
+ * Overlay the latest master-library teaching fields (Langkah/Prompts/Mastery
+ * Criteria) onto the programs saved inside one or more weekly plan snapshots.
+ *
+ * A weekly plan stores a copy of each program at generation time, so a master
+ * edited by an admin afterwards would not otherwise show up on the child page
+ * or guided session. Programs are matched by their master id. For each teaching
+ * field the master's value wins when the plan's own copy is empty; a value the
+ * plan already carries is kept (so AI-personalized content is not clobbered).
+ * Returns fresh plan objects — the stored snapshots are left untouched.
+ */
+export async function overlayMasterTeachingFields(plans: unknown[]): Promise<unknown[]> {
+  const ids = new Set<string>();
+  for (const plan of plans) {
+    const programs = (plan as { programs?: unknown[] } | null)?.programs;
+    if (Array.isArray(programs)) {
+      for (const p of programs) {
+        const id = (p as { id?: unknown })?.id;
+        if (id != null) ids.add(String(id));
+      }
+    }
+  }
+  if (!ids.size) return plans;
+
+  const masters = await prisma.abaMasterProgram.findMany({
+    where: { id: { in: [...ids] } },
+    select: { id: true, steps: true, prompts: true, mastery_criteria: true },
+  });
+  const masterById = new Map(masters.map((m) => [m.id, m]));
+
+  const hasArr = (v: unknown) => Array.isArray(v) && v.length > 0;
+  const hasStr = (v: unknown) => typeof v === 'string' && v.trim().length > 0;
+
+  return plans.map((plan) => {
+    const p = plan as { programs?: unknown[] } | null;
+    if (!p || typeof p !== 'object' || !Array.isArray(p.programs)) return plan;
+    const programs = p.programs.map((prog) => {
+      const pr = prog as Record<string, unknown>;
+      const master = pr?.id != null ? masterById.get(String(pr.id)) : null;
+      if (!master) return prog;
+      return {
+        ...pr,
+        steps: hasArr(pr.steps) ? pr.steps : (master.steps ?? pr.steps ?? null),
+        prompts: hasArr(pr.prompts) ? pr.prompts : (master.prompts ?? pr.prompts ?? null),
+        mastery_criteria: hasStr(pr.mastery_criteria)
+          ? pr.mastery_criteria
+          : (master.mastery_criteria ?? pr.mastery_criteria ?? null),
+      };
+    });
+    return { ...p, programs };
+  });
+}
+
+/**
  * Recent admin corrections (before → after) for a language. Injected into the
  * weekly-plan prompt so the AI learns the content/style admins expect.
  */

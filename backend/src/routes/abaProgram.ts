@@ -19,7 +19,10 @@ import {
 } from '../services/abaProgram.service.js';
 import { ensureGuidedFlow } from '../services/abaProgram.service.js';
 import { translateWeeklyAbaPlanJson } from '../services/abaProgram.service.js';
-import { syncWeeklyPlanToMasterPrograms } from '../services/abaMasterProgram.service.js';
+import {
+  overlayMasterTeachingFields,
+  syncWeeklyPlanToMasterPrograms,
+} from '../services/abaMasterProgram.service.js';
 import {
   recordLearningInsightForWeek,
 } from '../services/abaProgramLearning.service.js';
@@ -108,10 +111,13 @@ export async function abaProgramRoutes(
           },
         });
 
-        // Execution counts + scores per program, and whether the parent may
-        // generate the next program (computed before any content gating).
-        const withProgress = weeks.map((w) => ({
+        // Overlay the latest master-library teaching fields so admin edits to a
+        // program (Langkah/Prompts/Mastery Criteria) show up on already-generated
+        // plans. Progress is computed from the original snapshot (ids unchanged).
+        const overlaidPlans = await overlayMasterTeachingFields(weeks.map((w) => w.plan_json));
+        const withProgress = weeks.map((w, i) => ({
           ...w,
+          plan_json: overlaidPlans[i],
           program_progress: computeWeekProgramProgress(w),
         }));
 
