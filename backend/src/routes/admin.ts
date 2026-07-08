@@ -96,6 +96,9 @@ export async function adminRoutes(
         recommended_trials_per_day: z.number().int().min(1).max(100).nullable().optional(),
         materials: z.array(z.string().trim().max(300)).max(20).optional(),
         demo_video_url: z.string().trim().url().max(500).nullable().or(z.literal('').transform(() => null)).optional(),
+        steps: z.array(z.string().trim().max(300)).max(20).optional(),
+        prompts: z.array(z.string().trim().max(300)).max(20).optional(),
+        mastery_criteria: z.string().trim().max(500).nullable().optional(),
       });
       const parsed = bodySchema.safeParse(request.body || {});
       if (!parsed.success) {
@@ -449,6 +452,358 @@ export async function adminRoutes(
     }
   );
 
+  // Drill-down detail behind each analytics number (admin only).
+  // Returns a generic {title, columns, rows} table so the UI stays metric-agnostic.
+  fastify.get(
+    '/analytics/detail',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const q = (request.query || {}) as { metric?: string; plan?: string; status?: string };
+      const metric = String(q.metric || '');
+      const TAKE = 200;
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+      const ymd = (d?: Date | string | null) =>
+        d ? new Date(d).toISOString().slice(0, 10) : '';
+
+      const userCols = [
+        { key: 'name', label: 'Name' },
+        { key: 'email', label: 'Email' },
+        { key: 'role', label: 'Role' },
+        { key: 'created', label: 'Registered' },
+      ];
+      const userRows = (users: Array<{ name: string; email: string; role: string; created_at: Date }>) =>
+        users.map((u) => ({ name: u.name, email: u.email, role: u.role, created: ymd(u.created_at) }));
+
+      const listUsers = async (where: Prisma.UserWhereInput, title: string) => {
+        const users = await prisma.user.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          select: { name: true, email: true, role: true, created_at: true },
+        });
+        return { title, columns: userCols, rows: userRows(users) };
+      };
+
+      const logCols = [
+        { key: 'date', label: 'Date' },
+        { key: 'child', label: 'Child' },
+        { key: 'creator', label: 'Created by' },
+        { key: 'status', label: 'Status' },
+      ];
+      const listLogs = async (where: Prisma.ParentLogWhereInput, title: string) => {
+        const logs = await prisma.parentLog.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          select: {
+            log_date: true,
+            status: true,
+            child: { select: { name: true } },
+            creator: { select: { name: true } },
+          },
+        });
+        return {
+          title,
+          columns: logCols,
+          rows: logs.map((l) => ({
+            date: ymd(l.log_date),
+            child: l.child?.name ?? '—',
+            creator: l.creator?.name ?? '—',
+            status: l.status,
+          })),
+        };
+      };
+
+      const sessionCols = [
+        { key: 'date', label: 'Date' },
+        { key: 'child', label: 'Child' },
+        { key: 'therapist', label: 'Therapist' },
+        { key: 'status', label: 'Status' },
+      ];
+      const listSessions = async (where: Prisma.SessionWhereInput, title: string) => {
+        const sessions = await prisma.session.findMany({
+          where,
+          orderBy: { date: 'desc' },
+          take: TAKE,
+          select: {
+            date: true,
+            status: true,
+            child: { select: { name: true } },
+            therapist: { select: { name: true } },
+          },
+        });
+        return {
+          title,
+          columns: sessionCols,
+          rows: sessions.map((s) => ({
+            date: ymd(s.date),
+            child: s.child?.name ?? '—',
+            therapist: s.therapist?.name ?? '—',
+            status: s.status ?? '—',
+          })),
+        };
+      };
+
+      const subCols = [
+        { key: 'user', label: 'User' },
+        { key: 'email', label: 'Email' },
+        { key: 'plan', label: 'Plan' },
+        { key: 'status', label: 'Status' },
+        { key: 'since', label: 'Since' },
+      ];
+      const listSubs = async (where: Prisma.SubscriptionWhereInput, title: string) => {
+        const subs = await prisma.subscription.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          include: { user: { select: { name: true, email: true } } },
+        });
+        return {
+          title,
+          columns: subCols,
+          rows: subs.map((s) => ({
+            user: s.user?.name ?? '—',
+            email: s.user?.email ?? '—',
+            plan: s.plan_type,
+            status: s.status,
+            since: ymd(s.created_at),
+          })),
+        };
+      };
+
+      const walletCols = [
+        { key: 'user', label: 'User' },
+        { key: 'email', label: 'Email' },
+        { key: 'usage', label: 'Tokens used' },
+        { key: 'limit', label: 'Monthly limit' },
+        { key: 'pct', label: '%' },
+      ];
+      const listWallets = async (title: string) => {
+        const wallets = await prisma.aITokenWallet.findMany({
+          orderBy: { current_token_usage: 'desc' },
+          take: TAKE,
+          include: { user: { select: { name: true, email: true } } },
+        });
+        return {
+          title,
+          columns: walletCols,
+          rows: wallets.map((w) => ({
+            user: w.user?.name ?? '—',
+            email: w.user?.email ?? '—',
+            usage: w.current_token_usage,
+            limit: w.monthly_token_limit,
+            pct:
+              w.monthly_token_limit > 0
+                ? `${Math.round((w.current_token_usage / w.monthly_token_limit) * 100)}%`
+                : '—',
+          })),
+        };
+      };
+
+      const childCols = [
+        { key: 'child', label: 'Child' },
+        { key: 'parent', label: 'Parent' },
+        { key: 'email', label: 'Parent email' },
+        { key: 'active', label: 'Active' },
+        { key: 'created', label: 'Created' },
+      ];
+      const listChildren = async (where: Prisma.ChildWhereInput, title: string) => {
+        const children = await prisma.child.findMany({
+          where,
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          include: { parent: { select: { name: true, email: true } } },
+        });
+        return {
+          title,
+          columns: childCols,
+          rows: children.map((c) => ({
+            child: c.name,
+            parent: c.parent?.name ?? '—',
+            email: c.parent?.email ?? '—',
+            active: c.is_active ? 'yes' : 'no',
+            created: ymd(c.created_at),
+          })),
+        };
+      };
+
+      // Children + their ABA practice state, for the adoption drill-downs.
+      const listAbaChildren = async (ran: boolean, title: string) => {
+        const children = await prisma.child.findMany({
+          where: {
+            is_active: true,
+            abaProgramWeeks: ran
+              ? { some: { sessions: { some: { status: 'completed' } } } }
+              : { none: { sessions: { some: { status: 'completed' } } } },
+          },
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          include: {
+            parent: { select: { name: true, email: true } },
+            abaProgramWeeks: {
+              orderBy: { week_start: 'desc' },
+              take: 1,
+              include: {
+                sessions: {
+                  where: { status: 'completed' },
+                  orderBy: { completed_at: 'desc' },
+                  take: 1,
+                },
+              },
+            },
+          },
+        });
+        return {
+          title,
+          columns: [
+            { key: 'child', label: 'Child' },
+            { key: 'parent', label: 'Parent' },
+            { key: 'email', label: 'Parent email' },
+            { key: 'program', label: 'Has program' },
+            { key: 'last_run', label: 'Last completed run' },
+          ],
+          rows: children.map((c) => {
+            const latest = c.abaProgramWeeks[0];
+            const lastRun = latest?.sessions?.[0]?.completed_at ?? null;
+            return {
+              child: c.name,
+              parent: c.parent?.name ?? '—',
+              email: c.parent?.email ?? '—',
+              program: latest ? `yes (${ymd(latest.week_start)})` : 'no',
+              last_run: lastRun ? ymd(lastRun) : '—',
+            };
+          }),
+        };
+      };
+
+      const tokenLogCols = [
+        { key: 'date', label: 'Date' },
+        { key: 'user', label: 'User' },
+        { key: 'child', label: 'Child' },
+        { key: 'feature', label: 'Feature' },
+        { key: 'tokens', label: 'Tokens' },
+      ];
+      const listTokenLogs = async (title: string) => {
+        const rows = await prisma.aITokenUsageLog.findMany({
+          orderBy: { created_at: 'desc' },
+          take: TAKE,
+          include: {
+            user: { select: { name: true } },
+            child: { select: { name: true } },
+          },
+        });
+        return {
+          title,
+          columns: tokenLogCols,
+          rows: rows.map((r) => ({
+            date: ymd(r.created_at),
+            user: r.user?.name ?? '—',
+            child: r.child?.name ?? '—',
+            feature: r.feature,
+            tokens: r.tokens,
+          })),
+        };
+      };
+
+      let data: { title: string; columns: Array<{ key: string; label: string }>; rows: unknown[] } | null =
+        null;
+
+      switch (metric) {
+        case 'total_users':
+          data = await listUsers({}, 'All users');
+          break;
+        case 'users_this_month':
+          data = await listUsers({ created_at: { gte: thisMonth } }, 'Users registered this month');
+          break;
+        case 'users_last_month':
+          data = await listUsers(
+            { created_at: { gte: lastMonth, lt: thisMonth } },
+            'Users registered last month'
+          );
+          break;
+        case 'daily_active_users':
+          data = await listUsers(
+            { sessions: { some: { date: { gte: today } } } },
+            'Users with a session today'
+          );
+          break;
+        case 'monthly_active_users':
+          data = await listUsers(
+            {
+              OR: [
+                { sessions: { some: { date: { gte: thisMonth } } } },
+                { parentLogs: { some: { created_at: { gte: thisMonth } } } },
+              ],
+            },
+            'Users active this month'
+          );
+          break;
+        case 'total_children':
+          data = await listChildren({}, 'All children');
+          break;
+        case 'recent_logs':
+          data = await listLogs({ created_at: { gte: thisWeek } }, 'Logs — last 7 days');
+          break;
+        case 'total_logs':
+          data = await listLogs({}, 'Latest logs');
+          break;
+        case 'logs_this_month':
+          data = await listLogs({ created_at: { gte: thisMonth } }, 'Logs this month');
+          break;
+        case 'recent_sessions':
+          data = await listSessions({ date: { gte: thisWeek } }, 'Sessions — last 7 days');
+          break;
+        case 'total_sessions':
+          data = await listSessions({}, 'Latest sessions');
+          break;
+        case 'trial_subscriptions':
+          data = await listSubs({ status: 'trial' }, 'Trial subscriptions');
+          break;
+        case 'active_paid_subscriptions':
+          data = await listSubs(
+            { status: 'active', plan_type: { in: ['pro', 'premium'] } },
+            'Active paid subscriptions'
+          );
+          break;
+        case 'subscription_breakdown': {
+          const plan = String(q.plan || '');
+          const status = String(q.status || '');
+          data = await listSubs(
+            {
+              ...(plan ? { plan_type: plan as any } : {}),
+              ...(status ? { status: status as any } : {}),
+            },
+            `Subscriptions — ${plan || 'all plans'} (${status || 'all statuses'})`
+          );
+          break;
+        }
+        case 'tokens_used':
+          data = await listTokenLogs('Latest AI token usage');
+          break;
+        case 'token_wallets':
+          data = await listWallets('AI token wallets');
+          break;
+        case 'aba_ran':
+          data = await listAbaChildren(true, 'Children who have run the weekly home program');
+          break;
+        case 'aba_not_ran':
+          data = await listAbaChildren(false, 'Children who have not run the weekly home program yet');
+          break;
+        default:
+          reply.code(400);
+          return { success: false, error: `Unknown metric: ${metric}` };
+      }
+
+      return { success: true, data };
+    }
+  );
+
   // Get dashboard analytics (admin only)
   fastify.get(
     '/analytics',
@@ -669,6 +1024,17 @@ export async function adminRoutes(
       // Estimated AI cost (rough estimate: $0.002 per 1K tokens)
       const estimatedAICost = (totalTokensUsed / 1000) * 0.002;
 
+      // Weekly home program (ABA) adoption among active children
+      const [activeChildren, childrenRanAba] = await Promise.all([
+        prisma.child.count({ where: { is_active: true } }),
+        prisma.child.count({
+          where: {
+            is_active: true,
+            abaProgramWeeks: { some: { sessions: { some: { status: 'completed' } } } },
+          },
+        }),
+      ]);
+
       return {
         success: true,
         data: {
@@ -680,6 +1046,11 @@ export async function adminRoutes(
             total_subscriptions: totalSubscriptions,
             daily_active_users: dailyActiveUsers,
             monthly_active_users: monthlyActiveUsers,
+          },
+          aba_adoption: {
+            active_children: activeChildren,
+            children_ran: childrenRanAba,
+            children_not_ran: Math.max(0, activeChildren - childrenRanAba),
           },
           activity: {
             recent_logs: recentLogs,

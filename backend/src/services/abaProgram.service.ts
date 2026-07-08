@@ -194,6 +194,9 @@ JSON shape (all keys required unless empty arrays):
       "recommended_trials_per_day": number,
       "materials": string[],
       "demo_video_url": string | null,
+      "steps": string[],
+      "prompts": string[],
+      "mastery_criteria": string,
       "data_collection": {
         "symbols": ["+","-","p"],
         "trial_string_example": string
@@ -234,7 +237,12 @@ Rules for daily_guided_flow:
 - demo_video_url / video_url: optional. Use a stable public YouTube watch URL ONLY when you are confident it matches the skill (ABA parent coaching / modeling). If unsure, set null.
 
 Programs list:
-- 5-8 programs total, each with concrete targets and materials parents likely have at home.`;
+- 5-8 programs total, each with concrete targets and materials parents likely have at home.
+- EVERY program MUST include all three teaching fields, written for parents (no jargon):
+  - "steps" (Langkah): 3-6 short numbered steps describing exactly how to run one trial of the program.
+  - "prompts": 2-4 prompt levels from most to least help (e.g. full physical -> partial -> gestural/verbal -> independent), phrased as what the parent does.
+  - "mastery_criteria": ONE short measurable sentence (e.g. "80% independent across 3 consecutive days").
+- Match the wording style of these fields to the master_program_library_json entries (especially curated ones) so the library stays consistent.`;
 
 const THERAPY_NOTES_OCR_SYSTEM = `You read photos of handwritten ABA "Therapy Notes" forms (Indonesian/English mix).
 
@@ -373,11 +381,12 @@ clinical_review_comments_json (therapist/parent log & session reviews — addres
 ${clinicalReviews}
 `;
 
-  // Attempt 1: full plan (but constrained to keep JSON small).
+  // Attempt 1: full plan. Each program now carries steps/prompts/mastery
+  // fields, so the JSON needs substantially more room than the old shape.
   const out1 = await generateStructuredJsonFromPrompt({
     systemInstruction: WEEKLY_PLAN_SYSTEM,
     userText: user,
-    maxOutputTokens: 1600,
+    maxOutputTokens: 2600,
     temperature: 0.15,
   });
   if (out1) return { json: ensureGuidedFlow(out1.json), tokensUsed: out1.tokensUsed };
@@ -387,7 +396,7 @@ ${clinicalReviews}
   const out2 = await generateStructuredJsonFromPrompt({
     systemInstruction: WEEKLY_PLAN_SYSTEM,
     userText: fallbackUser,
-    maxOutputTokens: 1400,
+    maxOutputTokens: 2000,
     temperature: 0.1,
   });
   if (!out2) return null;

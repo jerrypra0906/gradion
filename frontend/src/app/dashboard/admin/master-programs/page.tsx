@@ -21,6 +21,9 @@ type AbaMasterProgramRow = {
   materials?: any;
   data_collection?: any;
   demo_video_url?: string | null;
+  steps?: any;
+  prompts?: any;
+  mastery_criteria?: string | null;
   is_curated?: boolean;
   is_archived?: boolean;
   merged_into_id?: string | null;
@@ -51,6 +54,9 @@ type EditForm = {
   materials: string;
   trials: string;
   videoUrl: string;
+  steps: string;
+  prompts: string;
+  masteryCriteria: string;
 };
 
 export default function AdminMasterProgramsPage() {
@@ -148,6 +154,9 @@ export default function AdminMasterProgramsPage() {
           ? String(row.recommended_trials_per_day)
           : '',
       videoUrl: row.demo_video_url || '',
+      steps: jsonListToBullets(row.steps).join('\n'),
+      prompts: jsonListToBullets(row.prompts).join('\n'),
+      masteryCriteria: row.mastery_criteria || '',
     });
   };
 
@@ -171,6 +180,9 @@ export default function AdminMasterProgramsPage() {
           materials: linesToList(editForm.materials),
           recommended_trials_per_day: trialsNum,
           demo_video_url: editForm.videoUrl.trim() || null,
+          steps: linesToList(editForm.steps),
+          prompts: linesToList(editForm.prompts),
+          mastery_criteria: editForm.masteryCriteria.trim() || null,
         }
       );
       if (!res.data.success) {
@@ -391,6 +403,8 @@ export default function AdminMasterProgramsPage() {
               const expanded = expandedId === r.id;
               const targets = jsonListToBullets(r.targets);
               const materials = jsonListToBullets(r.materials);
+              const steps = jsonListToBullets(r.steps);
+              const prompts = jsonListToBullets(r.prompts);
               const selected = selectedIds.includes(r.id);
               return (
                 <li key={r.id} className={selected ? 'bg-blue-50/50' : undefined}>
@@ -471,6 +485,41 @@ export default function AdminMasterProgramsPage() {
                             {isId ? 'Alat' : 'Materials'}
                           </div>
                           <div className="mt-1 text-sm text-gray-700">{materials.join(' · ')}</div>
+                        </div>
+                      ) : null}
+
+                      {steps.length ? (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-900">
+                            {isId ? 'Langkah' : 'Steps (Langkah)'}
+                          </div>
+                          <ol className="mt-1 list-decimal pl-5 text-sm text-gray-700">
+                            {steps.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      ) : null}
+
+                      {prompts.length ? (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-900">
+                            {isId ? 'Prompt (bantuan)' : 'Prompts'}
+                          </div>
+                          <ol className="mt-1 list-decimal pl-5 text-sm text-gray-700">
+                            {prompts.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      ) : null}
+
+                      {r.mastery_criteria ? (
+                        <div>
+                          <div className="text-xs font-semibold text-gray-900">
+                            {isId ? 'Kriteria ketuntasan' : 'Mastery criteria'}
+                          </div>
+                          <div className="mt-1 text-sm text-gray-700">{r.mastery_criteria}</div>
                         </div>
                       ) : null}
 
@@ -581,6 +630,31 @@ export default function AdminMasterProgramsPage() {
               value={editForm.materials}
               onChange={(e) => setEditForm({ ...editForm, materials: e.target.value })}
               className="min-h-[72px]"
+            />
+            <Textarea
+              label={isId ? 'Langkah — satu per baris' : 'Steps (Langkah) — one per line'}
+              value={editForm.steps}
+              onChange={(e) => setEditForm({ ...editForm, steps: e.target.value })}
+            />
+            <Textarea
+              label={
+                isId
+                  ? 'Prompt (bantuan, dari paling banyak ke mandiri) — satu per baris'
+                  : 'Prompts (most-to-least help) — one per line'
+              }
+              value={editForm.prompts}
+              onChange={(e) => setEditForm({ ...editForm, prompts: e.target.value })}
+              className="min-h-[72px]"
+            />
+            <Input
+              label={isId ? 'Kriteria ketuntasan' : 'Mastery criteria'}
+              value={editForm.masteryCriteria}
+              placeholder={
+                isId
+                  ? 'mis. 80% mandiri selama 3 hari berturut-turut'
+                  : 'e.g. 80% independent across 3 consecutive days'
+              }
+              onChange={(e) => setEditForm({ ...editForm, masteryCriteria: e.target.value })}
             />
             <Input
               label={isId ? 'Trial per hari (angka)' : 'Trials per day (number)'}

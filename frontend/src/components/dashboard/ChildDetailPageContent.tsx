@@ -1443,6 +1443,38 @@ export function ChildDetailPageContent() {
                                       <div className="mt-1">{(p.materials as string[]).join(' · ')}</div>
                                     </div>
                                   )}
+                                  {Array.isArray(p.steps) && p.steps.length > 0 && (
+                                    <div className="text-xs">
+                                      <div className="font-semibold text-[#1A2B4C]">
+                                        {language === 'id' ? 'Langkah' : 'Steps (Langkah)'}
+                                      </div>
+                                      <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                                        {(p.steps as string[]).map((s, i) => (
+                                          <li key={i}>{s}</li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  )}
+                                  {Array.isArray(p.prompts) && p.prompts.length > 0 && (
+                                    <div className="text-xs">
+                                      <div className="font-semibold text-[#1A2B4C]">
+                                        {language === 'id' ? 'Prompt (bantuan)' : 'Prompts'}
+                                      </div>
+                                      <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                                        {(p.prompts as string[]).map((s, i) => (
+                                          <li key={i}>{s}</li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  )}
+                                  {typeof p.mastery_criteria === 'string' && p.mastery_criteria.trim() && (
+                                    <div className="text-xs">
+                                      <div className="font-semibold text-[#1A2B4C]">
+                                        {language === 'id' ? 'Kriteria ketuntasan' : 'Mastery criteria'}
+                                      </div>
+                                      <div className="mt-1">{p.mastery_criteria}</div>
+                                    </div>
+                                  )}
                                   {demoUrl ? (
                                     <div className="space-y-1 text-xs">
                                       <div className="font-semibold text-[#1A2B4C]">

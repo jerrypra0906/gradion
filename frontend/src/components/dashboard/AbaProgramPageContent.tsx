@@ -454,7 +454,11 @@ export function AbaProgramPageContent() {
         {linkedProgram &&
           (linkedProgram.rationale ||
             (Array.isArray(linkedProgram.targets) && linkedProgram.targets.length > 0) ||
-            (Array.isArray(linkedProgram.materials) && linkedProgram.materials.length > 0)) && (
+            (Array.isArray(linkedProgram.materials) && linkedProgram.materials.length > 0) ||
+            (Array.isArray(linkedProgram.steps) && linkedProgram.steps.length > 0) ||
+            (Array.isArray(linkedProgram.prompts) && linkedProgram.prompts.length > 0) ||
+            (typeof linkedProgram.mastery_criteria === 'string' &&
+              linkedProgram.mastery_criteria.trim())) && (
             <DashboardSectionCard
               title={
                 <span className="inline-flex items-center gap-2">
@@ -483,6 +487,39 @@ export function AbaProgramPageContent() {
                     <div className="mt-1">{(linkedProgram.materials as string[]).join(' · ')}</div>
                   </div>
                 )}
+                {Array.isArray(linkedProgram.steps) && linkedProgram.steps.length > 0 && (
+                  <div className="text-xs">
+                    <div className="font-semibold text-[#1A2B4C]">
+                      {language === 'id' ? 'Langkah' : 'Steps (Langkah)'}
+                    </div>
+                    <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                      {(linkedProgram.steps as string[]).map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                {Array.isArray(linkedProgram.prompts) && linkedProgram.prompts.length > 0 && (
+                  <div className="text-xs">
+                    <div className="font-semibold text-[#1A2B4C]">
+                      {language === 'id' ? 'Prompt (bantuan)' : 'Prompts'}
+                    </div>
+                    <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                      {(linkedProgram.prompts as string[]).map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                {typeof linkedProgram.mastery_criteria === 'string' &&
+                  linkedProgram.mastery_criteria.trim() && (
+                    <div className="text-xs">
+                      <div className="font-semibold text-[#1A2B4C]">
+                        {language === 'id' ? 'Kriteria ketuntasan' : 'Mastery criteria'}
+                      </div>
+                      <div className="mt-1">{linkedProgram.mastery_criteria}</div>
+                    </div>
+                  )}
               </div>
             </DashboardSectionCard>
           )}

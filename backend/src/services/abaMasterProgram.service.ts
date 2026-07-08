@@ -45,6 +45,9 @@ function programSnapshot(r: {
   recommended_trials_per_day: number | null;
   materials: unknown;
   demo_video_url: string | null;
+  steps?: unknown;
+  prompts?: unknown;
+  mastery_criteria?: string | null;
 }) {
   return {
     name: r.name,
@@ -54,6 +57,9 @@ function programSnapshot(r: {
     recommended_trials_per_day: r.recommended_trials_per_day,
     materials: r.materials ?? null,
     demo_video_url: r.demo_video_url,
+    steps: r.steps ?? null,
+    prompts: r.prompts ?? null,
+    mastery_criteria: r.mastery_criteria ?? null,
   };
 }
 
@@ -74,6 +80,9 @@ export async function listMasterPrograms(input: { language: MasterLang; take?: n
     materials: r.materials,
     data_collection: r.data_collection,
     demo_video_url: r.demo_video_url,
+    steps: r.steps,
+    prompts: r.prompts,
+    mastery_criteria: r.mastery_criteria,
     curated: r.is_curated,
   }));
 }
@@ -182,6 +191,12 @@ export async function syncWeeklyPlanToMasterPrograms(input: {
               typeof p?.demo_video_url === 'string' && p.demo_video_url.trim()
                 ? String(p.demo_video_url).trim()
                 : target.demo_video_url,
+            steps: Array.isArray(p?.steps) ? (p.steps as any) : target.steps,
+            prompts: Array.isArray(p?.prompts) ? (p.prompts as any) : target.prompts,
+            mastery_criteria:
+              typeof p?.mastery_criteria === 'string' && p.mastery_criteria.trim()
+                ? String(p.mastery_criteria).trim()
+                : target.mastery_criteria,
             usage_count: { increment: 1 },
           },
         });
@@ -224,6 +239,12 @@ export async function syncWeeklyPlanToMasterPrograms(input: {
           demo_video_url:
             typeof p?.demo_video_url === 'string' && p.demo_video_url.trim()
               ? String(p.demo_video_url).trim()
+              : null,
+          steps: Array.isArray(p?.steps) ? (p.steps as any) : null,
+          prompts: Array.isArray(p?.prompts) ? (p.prompts as any) : null,
+          mastery_criteria:
+            typeof p?.mastery_criteria === 'string' && p.mastery_criteria.trim()
+              ? String(p.mastery_criteria).trim()
               : null,
           usage_count: 1,
         },
@@ -270,6 +291,9 @@ export type UpdateMasterProgramPatch = {
   recommended_trials_per_day?: number | null;
   materials?: string[];
   demo_video_url?: string | null;
+  steps?: string[];
+  prompts?: string[];
+  mastery_criteria?: string | null;
 };
 
 export type CurationResult =
@@ -315,6 +339,18 @@ export async function updateMasterProgram(input: {
       p.demo_video_url !== undefined
         ? (p.demo_video_url ? String(p.demo_video_url).trim() : null)
         : row.demo_video_url,
+    steps:
+      p.steps !== undefined
+        ? p.steps.map((s) => String(s).trim()).filter(Boolean)
+        : (row.steps as unknown),
+    prompts:
+      p.prompts !== undefined
+        ? p.prompts.map((s) => String(s).trim()).filter(Boolean)
+        : (row.prompts as unknown),
+    mastery_criteria:
+      p.mastery_criteria !== undefined
+        ? (p.mastery_criteria ? String(p.mastery_criteria).trim() : null)
+        : row.mastery_criteria,
   };
 
   const newKey = canonicalKeyForProgram(after);
@@ -345,6 +381,9 @@ export async function updateMasterProgram(input: {
         recommended_trials_per_day: after.recommended_trials_per_day,
         materials: after.materials as any,
         demo_video_url: after.demo_video_url,
+        steps: after.steps as any,
+        prompts: after.prompts as any,
+        mastery_criteria: after.mastery_criteria,
         canonical_key: newKey,
         is_curated: true,
       },

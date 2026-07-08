@@ -512,6 +512,12 @@ export interface AITokenWallet {
   updated_at: string;
 }
 
+export interface AnalyticsDetail {
+  title: string;
+  columns: Array<{ key: string; label: string }>;
+  rows: Array<Record<string, string | number>>;
+}
+
 export interface AdminAnalytics {
   overview: {
     total_users: number;
@@ -521,6 +527,11 @@ export interface AdminAnalytics {
     total_subscriptions: number;
     daily_active_users: number;
     monthly_active_users: number;
+  };
+  aba_adoption: {
+    active_children: number;
+    children_ran: number;
+    children_not_ran: number;
   };
   activity: {
     recent_logs: number;

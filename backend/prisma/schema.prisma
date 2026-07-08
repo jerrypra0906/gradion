@@ -143,6 +143,12 @@ model AbaMasterProgram {
   materials                 Json?
   data_collection           Json?
   demo_video_url            String?
+  /// How to run the program, step by step ("Langkah") — array of short strings.
+  steps                     Json?
+  /// Prompt hierarchy / how to help — array of short strings.
+  prompts                   Json?
+  /// Measurable mastery criterion, e.g. "80% independent across 3 consecutive sessions".
+  mastery_criteria          String?
   /// Admin curation: curated masters are AI exemplars and are never overwritten by generation sync.
   is_curated                Boolean  @default(false)
   is_archived               Boolean  @default(false)
