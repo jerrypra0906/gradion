@@ -13,6 +13,7 @@ import {
   updateTokenUsage,
 } from '../services/ai.service.js';
 import { ensureFirstAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
+import { notifyAdminsOfPendingAiContent } from '../services/reviewNotification.service.js';
 import {
   computeWeeklyExecutedHours,
   syncMissingParentLogsForChild,
@@ -478,6 +479,11 @@ export async function childrenRoutes(
         : { ...updated, has_pending_assessment: false };
 
       if (mode === 'generate') {
+        void notifyAdminsOfPendingAiContent({
+          kind: 'assessment',
+          childId,
+          childName: child.name,
+        });
         await ensureFirstAbaWeekForChild({
           childId,
           userId: billingUserId,
@@ -656,6 +662,12 @@ export async function childrenRoutes(
                       initial_assessment_report: result.reportMarkdown,
                       assessment_review_status: 'pending',
                     },
+            });
+
+            void notifyAdminsOfPendingAiContent({
+              kind: 'assessment',
+              childId,
+              childName,
             });
 
             await ensureFirstAbaWeekForChild({

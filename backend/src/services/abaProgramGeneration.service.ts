@@ -23,6 +23,7 @@ import {
   getPreviousWeekSessionContext,
 } from './abaProgramLearning.service.js';
 import { computeWeekProgramProgress } from './abaProgramProgress.service.js';
+import { notifyAdminsOfPendingAiContent } from './reviewNotification.service.js';
 
 /** Programs run for 7 days from the day they are generated (not calendar weeks). */
 export function todayYmd(d: Date = new Date()) {
@@ -230,6 +231,13 @@ export async function generateAbaWeekForChild(input: {
       reviewed_at: null,
       reviewed_by: null,
     },
+  });
+
+  // Let admins know there's a new weekly program awaiting review (best-effort).
+  void notifyAdminsOfPendingAiContent({
+    kind: 'weekly_program',
+    childId: input.childId,
+    childName: child.name,
   });
 
   return { ok: true, weekId: week.id, tokensUsed: ai.tokensUsed };

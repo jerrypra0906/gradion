@@ -8,6 +8,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './config/env.js';
 import { logger } from './utils/logger.js';
+import { startDailyScheduler, wibHourToUtc } from './services/scheduler.js';
+import { sendWeeklyProgramReminders } from './services/weeklyProgramReminder.service.js';
 import { healthRoutes } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { childrenRoutes } from './routes/children.js';
@@ -252,6 +254,22 @@ async function start() {
       host: config.host,
     });
     logger.info(`🚀 Server running on http://${config.host}:${config.port}`);
+
+    // Parent home-program reminders at 12:00 and 17:00 WIB (Asia/Jakarta).
+    startDailyScheduler([
+      {
+        name: 'weekly-program-reminder-midday',
+        utcHour: wibHourToUtc(12),
+        utcMinute: 0,
+        run: () => sendWeeklyProgramReminders('midday').then(() => undefined),
+      },
+      {
+        name: 'weekly-program-reminder-evening',
+        utcHour: wibHourToUtc(17),
+        utcMinute: 0,
+        run: () => sendWeeklyProgramReminders('evening').then(() => undefined),
+      },
+    ]);
   } catch (err) {
     logger.error(err);
     process.exit(1);
