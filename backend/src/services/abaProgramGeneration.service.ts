@@ -7,7 +7,7 @@ import {
   hasAIAccess,
   updateTokenUsage,
 } from './ai.service.js';
-import { generateWeeklyAbaPlanJson } from './abaProgram.service.js';
+import { generateWeeklyAbaPlanJson, reconcileGuidedFlow } from './abaProgram.service.js';
 import {
   getCurationLearningExamples,
   listMasterPrograms,
@@ -196,10 +196,13 @@ export async function generateAbaWeekForChild(input: {
     feature: 'weekly_program',
   });
 
-  const plan = await syncWeeklyPlanToMasterPrograms({
+  const syncedPlan = await syncWeeklyPlanToMasterPrograms({
     planJson: ai.json as any,
     language: input.lang,
   });
+  // Sync can remap program ids; make sure every program keeps runnable
+  // guided activities before the plan is stored.
+  const { plan } = reconcileGuidedFlow(syncedPlan);
   const mainstream = Boolean(plan?.mainstream_goal_met);
 
   await syncAutismCaseFromWeeklyPlan({

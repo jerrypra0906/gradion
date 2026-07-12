@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
+import { generateStructuredJsonFromPrompt } from './ai.service.js';
 
 type MasterLang = 'en' | 'id';
 
@@ -157,6 +158,38 @@ export async function getCurationLearningExamples(input: { language: MasterLang;
     before: e.before_json,
     after: e.after_json,
   }));
+}
+
+/**
+ * Batch-resolve merge redirects: for each input id that points at a master that
+ * was merged away, return the surviving master id (chains followed, bounded).
+ * Ids that are unknown or not merged are omitted from the result.
+ */
+export async function resolveMergeRedirects(ids: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  let pending = [...new Set(ids)].filter(Boolean);
+
+  for (let hop = 0; hop < 5 && pending.length; hop += 1) {
+    const rows = await prisma.abaMasterProgram.findMany({
+      where: { id: { in: pending }, merged_into_id: { not: null } },
+      select: { id: true, merged_into_id: true },
+    });
+    if (!rows.length) break;
+
+    const next: string[] = [];
+    for (const row of rows) {
+      const target = row.merged_into_id as string;
+      // Point every original id that currently resolves to row.id at the new target.
+      for (const [orig, cur] of result) {
+        if (cur === row.id) result.set(orig, target);
+      }
+      if (!result.has(row.id)) result.set(row.id, target);
+      next.push(target);
+    }
+    pending = [...new Set(next)];
+  }
+
+  return result;
 }
 
 /** Follow merged_into_id redirects to the surviving master (bounded to avoid cycles). */
@@ -453,6 +486,114 @@ export async function updateMasterProgram(input: {
   });
 
   return { ok: true, row: updated };
+}
+
+/** Of the given program ids, which have no master row at all (any language). */
+export async function findMissingMasterIds(ids: string[]): Promise<Set<string>> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (!unique.length) return new Set();
+  const rows = await prisma.abaMasterProgram.findMany({
+    where: { id: { in: unique } },
+    select: { id: true },
+  });
+  const found = new Set(rows.map((r) => r.id));
+  return new Set(unique.filter((id) => !found.has(id)));
+}
+
+/**
+ * Admin action: create the missing-language counterpart of a master program by
+ * AI-translating its content. The result is upserted into the target language
+ * (curated, since an admin requested it). If an identical program already
+ * exists there, that row is returned instead of creating a duplicate.
+ */
+export async function translateMasterProgram(input: {
+  id: string;
+  to: MasterLang;
+}): Promise<CurationResult & { tokensUsed?: number; alreadyExisted?: boolean }> {
+  const row = await prisma.abaMasterProgram.findUnique({ where: { id: input.id } });
+  if (!row) return { ok: false, error: 'Program not found', code: 404 };
+  if (row.merged_into_id) {
+    return { ok: false, error: 'This program was merged into another one', code: 409, conflictId: row.merged_into_id };
+  }
+  if (row.language === input.to) {
+    return { ok: false, error: 'Program is already in that language', code: 400 };
+  }
+
+  const source = {
+    name: row.name,
+    domain: row.domain,
+    rationale: row.rationale,
+    targets: row.targets ?? null,
+    materials: row.materials ?? null,
+    steps: row.steps ?? null,
+    prompts: row.prompts ?? null,
+    mastery_criteria: row.mastery_criteria,
+  };
+
+  const targetLangName = input.to === 'id' ? 'Bahasa Indonesia' : 'English';
+  const out = await generateStructuredJsonFromPrompt({
+    systemInstruction: `You translate parent-led ABA therapy program content.
+
+Return ONE JSON object only (no markdown), with exactly the same keys and structure as the input.
+Translate every human-facing string to ${targetLangName}.
+Keep clinical terms natural for parents in the target language (e.g. "reinforcer", "prompt" stay familiar).
+Do not add or remove array items. Keep null values null.`,
+    userText: JSON.stringify(source),
+    maxOutputTokens: 1600,
+    temperature: 0,
+  });
+  const t = (out?.json ?? null) as Record<string, any> | null;
+  if (!t || typeof t !== 'object') {
+    return { ok: false, error: 'AI translation failed — try again', code: 502 };
+  }
+
+  const cleanArr = (v: unknown, fallback: unknown) =>
+    Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : fallback;
+
+  const after = {
+    name: String(t.name || row.name).trim(),
+    domain: t.domain != null ? String(t.domain).trim() : row.domain,
+    rationale: t.rationale != null ? String(t.rationale).trim() : row.rationale,
+    targets: cleanArr(t.targets, row.targets),
+    recommended_trials_per_day: row.recommended_trials_per_day,
+    materials: cleanArr(t.materials, row.materials),
+    steps: cleanArr(t.steps, row.steps),
+    prompts: cleanArr(t.prompts, row.prompts),
+    mastery_criteria:
+      t.mastery_criteria != null ? String(t.mastery_criteria).trim() : row.mastery_criteria,
+  };
+
+  const key = canonicalKeyForProgram(after);
+  const existing = await prisma.abaMasterProgram.findUnique({
+    where: { language_canonical_key: { language: input.to, canonical_key: key } },
+  });
+  if (existing) {
+    const target = await resolveMergeTarget(existing);
+    return { ok: true, row: target, tokensUsed: out?.tokensUsed, alreadyExisted: true };
+  }
+
+  const created = await prisma.abaMasterProgram.create({
+    data: {
+      id: stableIdFromCanonicalKey(`${input.to}::${key}`),
+      language: input.to,
+      canonical_key: key,
+      name: after.name,
+      domain: after.domain,
+      rationale: after.rationale,
+      targets: after.targets as any,
+      recommended_trials_per_day: after.recommended_trials_per_day,
+      materials: after.materials as any,
+      data_collection: row.data_collection ?? undefined,
+      demo_video_url: row.demo_video_url,
+      steps: after.steps as any,
+      prompts: after.prompts as any,
+      mastery_criteria: after.mastery_criteria,
+      is_curated: true,
+      usage_count: 0,
+    },
+  });
+
+  return { ok: true, row: created, tokensUsed: out?.tokensUsed };
 }
 
 export async function setMasterProgramArchived(input: {

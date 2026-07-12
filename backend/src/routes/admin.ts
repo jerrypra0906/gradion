@@ -7,10 +7,14 @@ import { formatErrorMessage, getUserFacingError } from '../utils/errorResponse.j
 import { Prisma, SubscriptionPlan } from '@prisma/client';
 import { listAutismCases, seedMockAutismCases } from '../services/abaAutismCase.service.js';
 import {
+  findMissingMasterIds,
   mergeMasterPrograms,
   setMasterProgramArchived,
+  syncWeeklyPlanToMasterPrograms,
+  translateMasterProgram,
   updateMasterProgram,
 } from '../services/abaMasterProgram.service.js';
+import { healWeekPlans } from './abaProgram.js';
 import { UserService } from '../services/user.service.js';
 import { Role } from '../types/index.js';
 
@@ -130,6 +134,79 @@ export async function adminRoutes(
         return { success: false, error: result.error, conflict_id: result.conflictId };
       }
       return { success: true, data: { row: result.row } };
+    }
+  );
+
+  // Create the missing-language counterpart of a master program (AI translation).
+  fastify.post(
+    '/aba-master-programs/:id/translate',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request, reply) => {
+      const id = String((request.params as any).id || '');
+      const body = (request.body || {}) as { to?: string };
+      const to = body.to === 'en' ? 'en' : 'id';
+
+      const result = await translateMasterProgram({ id, to });
+      if (!result.ok) {
+        reply.code(result.code || 400);
+        return { success: false, error: result.error, conflict_id: result.conflictId };
+      }
+      return {
+        success: true,
+        data: { row: result.row, already_existed: Boolean(result.alreadyExisted) },
+      };
+    }
+  );
+
+  // Repair all stored weekly plans:
+  // 1. Programs missing from the master library entirely get backfilled (and
+  //    the plan's ids remapped to the new master ids).
+  // 2. Guided-flow drift is healed so every program card is runnable — orphaned
+  //    links after merges are relinked and uncovered programs get activities.
+  fastify.post(
+    '/aba-master-programs/repair-plans',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (_request, reply) => {
+      try {
+        const weeks = await prisma.childAbaProgramWeek.findMany({
+          select: { id: true, plan_json: true },
+          orderBy: { id: 'asc' },
+        });
+
+        let mastersBackfilled = 0;
+        for (const w of weeks) {
+          const plan: any = w.plan_json;
+          if (!plan || !Array.isArray(plan.programs) || !plan.programs.length) continue;
+          const ids = plan.programs
+            .map((p: any) => (p?.id != null ? String(p.id) : ''))
+            .filter(Boolean);
+          const missing = await findMissingMasterIds(ids);
+          if (!missing.size) continue;
+
+          const lang = plan.language === 'id' ? 'id' : 'en';
+          const synced = await syncWeeklyPlanToMasterPrograms({ planJson: plan, language: lang });
+          await prisma.childAbaProgramWeek.update({
+            where: { id: w.id },
+            data: { plan_json: synced as any },
+          });
+          w.plan_json = synced;
+          mastersBackfilled += missing.size;
+        }
+
+        const { repaired } = await healWeekPlans(weeks);
+
+        return {
+          success: true,
+          data: {
+            weeks_scanned: weeks.length,
+            masters_backfilled: mastersBackfilled,
+            plans_repaired: repaired,
+          },
+        };
+      } catch (error) {
+        reply.code(500);
+        return { success: false, error: formatErrorMessage(error, 'Repair failed') };
+      }
     }
   );
 

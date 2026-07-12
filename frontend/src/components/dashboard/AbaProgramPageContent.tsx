@@ -170,8 +170,24 @@ export function AbaProgramPageContent() {
 
   const filteredActivities = useMemo(() => {
     if (!programId) return activities;
-    return activities.filter((a) => String(a.linked_program_id || '') === programId);
-  }, [activities, programId]);
+    // A specific program's activities may live on any day of the week, so
+    // search the whole flow — not just the first day — and dedupe by id.
+    const plan: any = week?.plan_json;
+    const flow = Array.isArray(plan?.daily_guided_flow) ? plan.daily_guided_flow : [];
+    const matches: GuidedActivity[] = [];
+    const seen = new Set<string>();
+    for (const day of flow) {
+      const acts = Array.isArray(day?.activities) ? day.activities : [];
+      for (const a of acts) {
+        if (String(a?.linked_program_id || '') !== programId) continue;
+        const key = a?.id != null ? String(a.id) : `${matches.length}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        matches.push(a);
+      }
+    }
+    return matches;
+  }, [activities, programId, week]);
 
   const programDemoVideoById = useMemo(() => {
     const m = new Map<string, string>();

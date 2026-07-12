@@ -88,6 +88,8 @@ export default function AdminMasterProgramsPage() {
   const [editError, setEditError] = useState('');
 
   const [archiveBusyId, setArchiveBusyId] = useState<string>('');
+  const [translateBusyId, setTranslateBusyId] = useState<string>('');
+  const [repairBusy, setRepairBusy] = useState(false);
 
   useEffect(() => {
     setLangFilter(language === 'en' ? 'en' : 'id');
@@ -242,6 +244,64 @@ export default function AdminMasterProgramsPage() {
     }
   };
 
+  // Create the counterpart of this program in the other language so weekly
+  // plans in both languages can reuse it.
+  const handleTranslate = async (row: AbaMasterProgramRow) => {
+    const to = langFilter === 'id' ? 'en' : 'id';
+    try {
+      setTranslateBusyId(row.id);
+      setError('');
+      const res = await apiClient.post<
+        ApiResponse<{ row: AbaMasterProgramRow; already_existed: boolean }>
+      >(`/admin/aba-master-programs/${encodeURIComponent(row.id)}/translate`, { to });
+      if (!res.data.success) {
+        setError(res.data.error || 'Failed to translate');
+        return;
+      }
+      const existed = res.data.data?.already_existed;
+      setNotice(
+        existed
+          ? isId
+            ? `Versi ${to === 'id' ? 'Bahasa Indonesia' : 'English'} untuk “${row.name}” sudah ada.`
+            : `A ${to === 'id' ? 'Bahasa Indonesia' : 'English'} version of “${row.name}” already exists.`
+          : isId
+            ? `Versi ${to === 'id' ? 'Bahasa Indonesia' : 'English'} untuk “${row.name}” berhasil dibuat (terkurasi).`
+            : `Created the ${to === 'id' ? 'Bahasa Indonesia' : 'English'} version of “${row.name}” (curated).`
+      );
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Failed to translate');
+    } finally {
+      setTranslateBusyId('');
+    }
+  };
+
+  // Backfill missing masters from stored weekly plans and repair guided-flow
+  // drift so parents can run every program card.
+  const handleRepairPlans = async () => {
+    try {
+      setRepairBusy(true);
+      setError('');
+      const res = await apiClient.post<
+        ApiResponse<{ weeks_scanned: number; masters_backfilled: number; plans_repaired: number }>
+      >('/admin/aba-master-programs/repair-plans', {});
+      if (!res.data.success || !res.data.data) {
+        setError(res.data.error || 'Repair failed');
+        return;
+      }
+      const d = res.data.data;
+      setNotice(
+        isId
+          ? `Selesai: ${d.weeks_scanned} minggu diperiksa, ${d.plans_repaired} rencana diperbaiki, ${d.masters_backfilled} program ditambahkan ke pustaka.`
+          : `Done: ${d.weeks_scanned} weeks scanned, ${d.plans_repaired} plans repaired, ${d.masters_backfilled} programs backfilled into the library.`
+      );
+      void load();
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Repair failed');
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
   const openMerge = () => {
     if (selectedIds.length < 2) return;
     setMergeKeepId(selectedIds[0]);
@@ -344,6 +404,15 @@ export default function AdminMasterProgramsPage() {
             </div>
             <Button variant="outline" onClick={() => void load()} disabled={loading}>
               {loading ? t('loading') : isId ? 'Muat' : 'Load'}
+            </Button>
+            <Button onClick={() => void handleRepairPlans()} disabled={repairBusy}>
+              {repairBusy
+                ? isId
+                  ? 'Memperbaiki…'
+                  : 'Repairing…'
+                : isId
+                  ? 'Perbaiki rencana mingguan'
+                  : 'Repair weekly plans'}
             </Button>
           </div>
         </div>
@@ -544,7 +613,7 @@ export default function AdminMasterProgramsPage() {
                         {isId ? 'Diperbarui' : 'Updated'}: {new Date(r.updated_at).toLocaleString()}
                       </div>
 
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
                           {isId ? 'Ubah' : 'Edit'}
                         </Button>
@@ -564,6 +633,26 @@ export default function AdminMasterProgramsPage() {
                                 ? 'Arsipkan'
                                 : 'Archive'}
                         </Button>
+                        {!r.is_archived && !r.merged_into_id ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void handleTranslate(r)}
+                            disabled={translateBusyId === r.id}
+                          >
+                            {translateBusyId === r.id
+                              ? isId
+                                ? 'Menerjemahkan…'
+                                : 'Translating…'
+                              : langFilter === 'id'
+                                ? isId
+                                  ? 'Buat versi English'
+                                  : 'Create English version'
+                                : isId
+                                  ? 'Buat versi Indonesia'
+                                  : 'Create Indonesian version'}
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}

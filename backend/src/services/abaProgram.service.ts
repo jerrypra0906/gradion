@@ -33,7 +33,10 @@ ${JSON.stringify(input.fromPlanJson)}
   const out = await generateStructuredJsonFromPrompt({
     systemInstruction: system,
     userText: user,
-    maxOutputTokens: 1400,
+    // A full plan (programs + 5-day guided flow) does not fit in ~1400 tokens;
+    // a too-small cap makes the model drop flow entries to fit, which strands
+    // programs without guided activities.
+    maxOutputTokens: 6000,
     temperature: 0,
   });
   if (!out) return null;
@@ -42,6 +45,81 @@ ${JSON.stringify(input.fromPlanJson)}
     translated.language = input.toLanguage;
   }
   return { json: ensureGuidedFlow(translated), tokensUsed: out.tokensUsed };
+}
+
+/**
+ * Repair drift between plan.programs and plan.daily_guided_flow so guided mode
+ * always works for every program card the parent sees:
+ *
+ * 1. Flow activities that link to a program id no longer in the plan (typically
+ *    a master that was later merged away) are relinked — via the caller-supplied
+ *    merge-redirect map when possible, otherwise by the activity title, which
+ *    ensureGuidedFlow writes as "<program name>: <target>".
+ * 2. Programs with no guided activity anywhere in the week get activities
+ *    appended (spread over the first days), so "start this task" never
+ *    dead-ends.
+ *
+ * Pure function apart from the injected redirect map; returns whether anything
+ * changed so callers can decide to persist.
+ */
+export function reconcileGuidedFlow(
+  plan: any,
+  idRedirects?: Map<string, string>
+): { plan: any; changed: boolean } {
+  const safePlan: any = plan && typeof plan === 'object' ? plan : {};
+  const programs: any[] = Array.isArray(safePlan.programs) ? safePlan.programs : [];
+  const flow: any[] = Array.isArray(safePlan.daily_guided_flow) ? safePlan.daily_guided_flow : [];
+  if (!programs.length || !flow.length) return { plan: safePlan, changed: false };
+
+  const planLang: 'en' | 'id' = safePlan.language === 'id' ? 'id' : 'en';
+  const programIds = new Set(programs.filter((p) => p?.id != null).map((p) => String(p.id)));
+  let changed = false;
+
+  // 1) Relink orphaned activities.
+  for (const day of flow) {
+    const acts = Array.isArray(day?.activities) ? day.activities : [];
+    for (const act of acts) {
+      const lid = act?.linked_program_id != null ? String(act.linked_program_id) : '';
+      if (!lid || programIds.has(lid)) continue;
+
+      const redirected = idRedirects?.get(lid);
+      if (redirected && programIds.has(redirected)) {
+        act.linked_program_id = redirected;
+        changed = true;
+        continue;
+      }
+
+      const title = typeof act?.title === 'string' ? act.title : '';
+      const byName = programs.find(
+        (p) => p?.name && title.toLowerCase().startsWith(`${String(p.name).toLowerCase()}:`)
+      );
+      if (byName?.id != null) {
+        act.linked_program_id = String(byName.id);
+        changed = true;
+      }
+    }
+  }
+
+  // 2) Give uncovered programs at least one activity to run.
+  const linked = new Set<string>();
+  for (const day of flow) {
+    for (const act of Array.isArray(day?.activities) ? day.activities : []) {
+      if (act?.linked_program_id != null) linked.add(String(act.linked_program_id));
+    }
+  }
+  const uncovered = programs.filter((p) => p?.id != null && !linked.has(String(p.id)));
+  for (let i = 0; i < uncovered.length; i += 1) {
+    const program = uncovered[i];
+    // Spread across days round-robin so one day doesn't collect everything.
+    const day = flow[i % flow.length];
+    if (!Array.isArray(day.activities)) day.activities = [];
+    day.activities.push(
+      makeGuidedActivity(String(day.day || 'mon'), day.activities.length, program, planLang)
+    );
+    changed = true;
+  }
+
+  return { plan: safePlan, changed };
 }
 
 function localizeKnownGuidedSteps(steps: string[], lang: 'en' | 'id'): string[] {
@@ -55,6 +133,49 @@ function localizeKnownGuidedSteps(steps: string[], lang: 'en' | 'id'): string[] 
     if (out === EN_GUIDED_LINE3) return ID_GUIDED_LINE3;
     return out;
   });
+}
+
+function makeGuidedActivity(
+  day: string,
+  idx: number,
+  program: any,
+  planLang: 'en' | 'id'
+) {
+  const programId = program?.id ? String(program.id) : 'program_1';
+  const programName = program?.name ? String(program.name) : 'Home practice';
+  const target = Array.isArray(program?.targets) && program.targets.length ? String(program.targets[0]) : 'Follow simple instruction';
+  const expected = Math.max(
+    8,
+    Math.min(20, Number(program?.recommended_trials_per_day || 10))
+  );
+  const defaultMatEn = '2–3 simple items';
+  const defaultMatId = '2–3 barang sederhana';
+  const mat0 =
+    Array.isArray(program?.materials) && program.materials.length
+      ? String(program.materials[0])
+      : planLang === 'id'
+        ? defaultMatId
+        : defaultMatEn;
+  const stepsEn = [`Prepare: ${mat0}.`, EN_GUIDED_LINE2, EN_GUIDED_LINE3];
+  const stepsId = [`Persiapan: ${mat0}.`, ID_GUIDED_LINE2, ID_GUIDED_LINE3];
+  const demoUrl =
+    program?.demo_video_url && String(program.demo_video_url).trim()
+      ? String(program.demo_video_url).trim()
+      : null;
+  return {
+    id: `${day}_a${idx + 1}`,
+    title: `${programName}: ${target}`,
+    duration_seconds: 600,
+    linked_program_id: programId,
+    steps: planLang === 'id' ? stepsId : stepsEn,
+    timer_seconds: 300,
+    video_url: demoUrl,
+    parent_records: {
+      type: 'trial_string',
+      expected_length: expected,
+      hint: '+ + p - + ...',
+    },
+  };
 }
 
 export function ensureGuidedFlow(plan: any) {
@@ -72,43 +193,8 @@ export function ensureGuidedFlow(plan: any) {
   const days = ['mon', 'tue', 'wed', 'thu', 'fri'];
   const getProgram = (i: number) => programs[i % Math.max(1, programs.length)] || null;
 
-  const makeActivity = (day: string, idx: number, program: any) => {
-    const programId = program?.id ? String(program.id) : 'program_1';
-    const programName = program?.name ? String(program.name) : 'Home practice';
-    const target = Array.isArray(program?.targets) && program.targets.length ? String(program.targets[0]) : 'Follow simple instruction';
-    const expected = Math.max(
-      8,
-      Math.min(20, Number(program?.recommended_trials_per_day || 10))
-    );
-    const defaultMatEn = '2–3 simple items';
-    const defaultMatId = '2–3 barang sederhana';
-    const mat0 =
-      Array.isArray(program?.materials) && program.materials.length
-        ? String(program.materials[0])
-        : planLang === 'id'
-          ? defaultMatId
-          : defaultMatEn;
-    const stepsEn = [`Prepare: ${mat0}.`, EN_GUIDED_LINE2, EN_GUIDED_LINE3];
-    const stepsId = [`Persiapan: ${mat0}.`, ID_GUIDED_LINE2, ID_GUIDED_LINE3];
-    const demoUrl =
-      program?.demo_video_url && String(program.demo_video_url).trim()
-        ? String(program.demo_video_url).trim()
-        : null;
-    return {
-      id: `${day}_a${idx + 1}`,
-      title: `${programName}: ${target}`,
-      duration_seconds: 600,
-      linked_program_id: programId,
-      steps: planLang === 'id' ? stepsId : stepsEn,
-      timer_seconds: 300,
-      video_url: demoUrl,
-      parent_records: {
-        type: 'trial_string',
-        expected_length: expected,
-        hint: '+ + p - + ...',
-      },
-    };
-  };
+  const makeActivity = (day: string, idx: number, program: any) =>
+    makeGuidedActivity(day, idx, program, planLang);
 
   let flow: any[] = Array.isArray(safePlan.daily_guided_flow) ? safePlan.daily_guided_flow : [];
   // Normalize days: keep only mon-fri, fill missing.
@@ -118,13 +204,15 @@ export function ensureGuidedFlow(plan: any) {
     if (days.includes(d)) byDay.set(d, row);
   }
 
-  const normalizedFlow = days.map((d) => {
+  const normalizedFlow = days.map((d, dayIdx) => {
     const row = byDay.get(d) || { day: d, activities: [] };
     const acts = Array.isArray(row.activities) ? row.activities : [];
     if (acts.length > 0) return { day: d, activities: acts };
 
-    // Auto-fill 3 activities if empty/missing.
-    const filled = [0, 1, 2].map((i) => makeActivity(d, i, getProgram(i)));
+    // Auto-fill 3 activities if empty/missing. Rotate the starting program per
+    // day so every program of the plan (not just the first three) gets guided
+    // activities somewhere in the week.
+    const filled = [0, 1, 2].map((i) => makeActivity(d, i, getProgram(dayIdx * 3 + i)));
     return { day: d, activities: filled };
   });
 

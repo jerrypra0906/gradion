@@ -17,10 +17,11 @@ import {
 import {
   extractTherapyNotesJsonFromImage,
 } from '../services/abaProgram.service.js';
-import { ensureGuidedFlow } from '../services/abaProgram.service.js';
+import { ensureGuidedFlow, reconcileGuidedFlow } from '../services/abaProgram.service.js';
 import { translateWeeklyAbaPlanJson } from '../services/abaProgram.service.js';
 import {
   overlayMasterTeachingFields,
+  resolveMergeRedirects,
   syncWeeklyPlanToMasterPrograms,
 } from '../services/abaMasterProgram.service.js';
 import {
@@ -33,6 +34,55 @@ import { computeWeekProgramProgress } from '../services/abaProgramProgress.servi
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LOCAL_THERAPY_NOTES_DIR = path.join(__dirname, '../../uploads/therapy-notes');
+
+/**
+ * Heal program/flow drift on stored weekly plans — flow activities orphaned by
+ * admin merges of master programs, and programs left without any guided
+ * activity — and persist the fixed plans. Returns the weeks with healed plans
+ * so callers can serve them immediately.
+ */
+export async function healWeekPlans<T extends { id: number; plan_json: unknown }>(
+  weeks: T[]
+): Promise<{ weeks: T[]; repaired: number }> {
+  const orphanIds: string[] = [];
+  for (const w of weeks) {
+    const plan: any = w.plan_json;
+    if (!plan || !Array.isArray(plan.programs)) continue;
+    const progIds = new Set(
+      plan.programs.filter((p: any) => p?.id != null).map((p: any) => String(p.id))
+    );
+    const flow = Array.isArray(plan.daily_guided_flow) ? plan.daily_guided_flow : [];
+    for (const day of flow) {
+      for (const act of Array.isArray(day?.activities) ? day.activities : []) {
+        const lid = act?.linked_program_id != null ? String(act.linked_program_id) : '';
+        if (lid && !progIds.has(lid)) orphanIds.push(lid);
+      }
+    }
+  }
+  const redirects = orphanIds.length
+    ? await resolveMergeRedirects(orphanIds)
+    : new Map<string, string>();
+
+  const updates: Promise<unknown>[] = [];
+  const healed = weeks.map((w) => {
+    const plan: any = w.plan_json;
+    if (!plan || typeof plan !== 'object') return w;
+    const { plan: fixed, changed } = reconcileGuidedFlow(plan, redirects);
+    if (!changed) return w;
+    updates.push(
+      prisma.childAbaProgramWeek.update({
+        where: { id: w.id },
+        data: { plan_json: fixed as any },
+      })
+    );
+    return { ...w, plan_json: fixed };
+  });
+  if (updates.length) {
+    await Promise.all(updates);
+    logger.info({ repaired: updates.length }, 'Healed guided flow on weekly plans');
+  }
+  return { weeks: healed, repaired: updates.length };
+}
 
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 if (config.storage.supabaseUrl && config.storage.supabaseServiceRoleKey) {
@@ -111,11 +161,15 @@ export async function abaProgramRoutes(
           },
         });
 
+        // Repair flow/program drift (merged-away ids, uncovered programs) so
+        // guided mode always has activities for every program card.
+        const { weeks: healedWeeks } = await healWeekPlans(weeks);
+
         // Overlay the latest master-library teaching fields so admin edits to a
         // program (Langkah/Prompts/Mastery Criteria) show up on already-generated
         // plans. Progress is computed from the original snapshot (ids unchanged).
-        const overlaidPlans = await overlayMasterTeachingFields(weeks.map((w) => w.plan_json));
-        const withProgress = weeks.map((w, i) => ({
+        const overlaidPlans = await overlayMasterTeachingFields(healedWeeks.map((w) => w.plan_json));
+        const withProgress = healedWeeks.map((w, i) => ({
           ...w,
           plan_json: overlaidPlans[i],
           program_progress: computeWeekProgramProgress(w),
@@ -282,9 +336,13 @@ export async function abaProgramRoutes(
           language: to,
         });
 
+        // The AI may drop/rename flow links during translation and the sync
+        // can remap program ids — reconcile so every program stays runnable.
+        const { plan: reconciled } = reconcileGuidedFlow(synced);
+
         const updated = await prisma.childAbaProgramWeek.update({
           where: { id: week.id },
-          data: { plan_json: synced as any },
+          data: { plan_json: reconciled as any },
         });
 
         return { success: true, data: { week: updated, tokens_used: translated.tokensUsed } };
@@ -343,7 +401,10 @@ export async function abaProgramRoutes(
               where: { id: week.id },
               data: { plan_json: patched as any },
             });
+            week.plan_json = patched as any;
           }
+          // Also repair orphaned links / uncovered programs before the parent runs.
+          await healWeekPlans([week]);
         }
 
         const session = await prisma.childAbaProgramSession.create({
