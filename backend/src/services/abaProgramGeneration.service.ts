@@ -229,6 +229,8 @@ export async function generateAbaWeekForChild(input: {
     update: {
       status: 'active',
       plan_json: plan as any,
+      // A regenerated plan invalidates cached translations of the old one.
+      plan_json_i18n: {},
       mainstream_goal_met: mainstream,
       review_status: 'pending',
       reviewed_at: null,

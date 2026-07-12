@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Clock, ListChecks, PlayCircle, Target } from 'lucide-react';
+import { ArrowLeft, Clock, ListChecks, Pause, Play, PlayCircle, Target } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
 import { DashboardSectionCard } from '@/components/dashboard/DashboardSectionCard';
@@ -252,6 +252,15 @@ export function AbaProgramPageContent() {
   );
   const timerSeconds = Math.max(30, Number(current?.timer_seconds || current?.duration_seconds || 300));
   const tickRef = useRef<number | null>(null);
+  // Pause is read inside the interval via a ref so toggling it never restarts
+  // the countdown; the state twin drives the button UI.
+  const [timerPaused, setTimerPaused] = useState(false);
+  const timerPausedRef = useRef(false);
+
+  const toggleTimerPaused = () => {
+    timerPausedRef.current = !timerPausedRef.current;
+    setTimerPaused(timerPausedRef.current);
+  };
 
   const currentEntries = current?.id ? trialsByActivity[current.id] || [] : [];
   const trialsComplete =
@@ -262,8 +271,11 @@ export function AbaProgramPageContent() {
   useEffect(() => {
     if (!current?.id) return;
     setRemaining(timerSeconds);
+    timerPausedRef.current = false;
+    setTimerPaused(false);
     if (tickRef.current) window.clearInterval(tickRef.current);
     tickRef.current = window.setInterval(() => {
+      if (timerPausedRef.current) return;
       setRemaining((r) => (r > 0 ? r - 1 : 0));
     }, 1000);
     return () => {
@@ -438,9 +450,41 @@ export function AbaProgramPageContent() {
                   {language === 'id' ? 'Tugas' : 'Task'} {idx + 1}/{filteredActivities.length}
                 </span>
               </div>
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-[#00C1B2]/30 bg-[#00C1B2]/20 px-3 py-1.5 text-sm font-bold tabular-nums text-white">
-                <Clock className="h-4 w-4 text-[#00C1B2]" aria-hidden />
-                {timerDisplay}
+              <div
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-sm font-bold tabular-nums text-white',
+                  timerPaused
+                    ? 'border-[#FFB900]/40 bg-[#FFB900]/25'
+                    : 'border-[#00C1B2]/30 bg-[#00C1B2]/20',
+                )}
+              >
+                <Clock className={cn('h-4 w-4', timerPaused ? 'text-[#FFB900]' : 'text-[#00C1B2]')} aria-hidden />
+                <span className={timerPaused ? 'opacity-70' : undefined}>{timerDisplay}</span>
+                <button
+                  type="button"
+                  onClick={toggleTimerPaused}
+                  aria-label={
+                    timerPaused
+                      ? language === 'id'
+                        ? 'Lanjutkan timer'
+                        : 'Resume timer'
+                      : language === 'id'
+                        ? 'Jeda timer'
+                        : 'Pause timer'
+                  }
+                  className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-colors hover:bg-white/30"
+                >
+                  {timerPaused ? (
+                    <Play className="h-3.5 w-3.5" aria-hidden />
+                  ) : (
+                    <Pause className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                </button>
+                {timerPaused && (
+                  <span className="pr-1 text-[11px] font-semibold uppercase tracking-wide text-[#FFB900]">
+                    {language === 'id' ? 'Jeda' : 'Paused'}
+                  </span>
+                )}
               </div>
             </div>
           }

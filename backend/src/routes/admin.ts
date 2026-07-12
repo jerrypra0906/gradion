@@ -169,7 +169,13 @@ export async function adminRoutes(
     async (_request, reply) => {
       try {
         const weeks = await prisma.childAbaProgramWeek.findMany({
-          select: { id: true, plan_json: true },
+          select: {
+            id: true,
+            plan_json: true,
+            sessions: {
+              select: { id: true, status: true, guided_results_json: true },
+            },
+          },
           orderBy: { id: 'asc' },
         });
 

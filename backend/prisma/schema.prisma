@@ -193,6 +193,9 @@ model ChildAbaProgramWeek {
   status     AbaProgramWeekStatus  @default(draft)
   /// Structured plan: programs, targets, trials, daily guided activities (Sheet1-style), etc.
   plan_json  Json
+  /// Per-language cache of the plan ({ en: {...}, id: {...} }) so switching
+  /// languages after the first translation is instant (no AI call).
+  plan_json_i18n Json?
   /// Optional: therapist-style rows parsed from an uploaded therapy-notes photo (OCR).
   therapy_notes_json Json?
   mainstream_goal_met Boolean      @default(false)

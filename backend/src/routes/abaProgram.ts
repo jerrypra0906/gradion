@@ -38,12 +38,23 @@ const LOCAL_THERAPY_NOTES_DIR = path.join(__dirname, '../../uploads/therapy-note
 /**
  * Heal program/flow drift on stored weekly plans — flow activities orphaned by
  * admin merges of master programs, and programs left without any guided
- * activity — and persist the fixed plans. Returns the weeks with healed plans
- * so callers can serve them immediately.
+ * activity — and persist the fixed plans. When the week rows carry sessions,
+ * completed guided results are healed too: program-id remaps (sync/merges)
+ * would otherwise strand historical results on old ids and reset the
+ * "executed" counters to zero even though the practice really happened. The
+ * guided activity id (mon_a1, …) is stable across remaps, so results adopt
+ * the plan's current linked_program_id for the same activity.
+ * Returns the weeks with healed plans/sessions so callers can serve them.
  */
-export async function healWeekPlans<T extends { id: number; plan_json: unknown }>(
-  weeks: T[]
-): Promise<{ weeks: T[]; repaired: number }> {
+type HealableSession = {
+  id: number;
+  status: string;
+  guided_results_json?: unknown | null;
+};
+
+export async function healWeekPlans<
+  T extends { id: number; plan_json: unknown; sessions?: HealableSession[] | null }
+>(weeks: T[]): Promise<{ weeks: T[]; repaired: number }> {
   const orphanIds: string[] = [];
   for (const w of weeks) {
     const plan: any = w.plan_json;
@@ -58,28 +69,91 @@ export async function healWeekPlans<T extends { id: number; plan_json: unknown }
         if (lid && !progIds.has(lid)) orphanIds.push(lid);
       }
     }
+    // Session results may hold ids from before a remap; resolve those too.
+    for (const s of Array.isArray(w.sessions) ? w.sessions : []) {
+      const results: any = s?.guided_results_json;
+      for (const a of Array.isArray(results?.activities) ? results.activities : []) {
+        const lid = a?.linked_program_id != null ? String(a.linked_program_id) : '';
+        if (lid && !progIds.has(lid)) orphanIds.push(lid);
+      }
+    }
   }
   const redirects = orphanIds.length
     ? await resolveMergeRedirects(orphanIds)
     : new Map<string, string>();
 
   const updates: Promise<unknown>[] = [];
+  let sessionRepairs = 0;
+
   const healed = weeks.map((w) => {
     const plan: any = w.plan_json;
     if (!plan || typeof plan !== 'object') return w;
     const { plan: fixed, changed } = reconcileGuidedFlow(plan, redirects);
-    if (!changed) return w;
-    updates.push(
-      prisma.childAbaProgramWeek.update({
-        where: { id: w.id },
-        data: { plan_json: fixed as any },
-      })
+    if (changed) {
+      updates.push(
+        prisma.childAbaProgramWeek.update({
+          where: { id: w.id },
+          data: { plan_json: fixed as any },
+        })
+      );
+    }
+
+    // Heal completed session results against the (possibly fixed) plan.
+    const progIds = new Set<string>(
+      (Array.isArray(fixed.programs) ? fixed.programs : [])
+        .filter((p: any) => p?.id != null)
+        .map((p: any) => String(p.id))
     );
-    return { ...w, plan_json: fixed };
+    const linkByActivityId = new Map<string, string>();
+    for (const day of Array.isArray(fixed.daily_guided_flow) ? fixed.daily_guided_flow : []) {
+      for (const act of Array.isArray(day?.activities) ? day.activities : []) {
+        if (act?.id != null && act?.linked_program_id != null) {
+          linkByActivityId.set(String(act.id), String(act.linked_program_id));
+        }
+      }
+    }
+    for (const s of Array.isArray(w.sessions) ? w.sessions : []) {
+      if (s?.status !== 'completed') continue;
+      const results: any = s.guided_results_json;
+      const acts = Array.isArray(results?.activities) ? results.activities : [];
+      let sessionChanged = false;
+      for (const a of acts) {
+        const lid = a?.linked_program_id != null ? String(a.linked_program_id) : '';
+        if (lid && progIds.has(lid)) continue;
+        const aid = a?.activity_id != null ? String(a.activity_id) : '';
+        const byActivity = aid ? linkByActivityId.get(aid) : undefined;
+        const redirected = lid ? redirects.get(lid) : undefined;
+        const next =
+          byActivity && progIds.has(byActivity)
+            ? byActivity
+            : redirected && progIds.has(redirected)
+              ? redirected
+              : '';
+        if (next && next !== lid) {
+          a.linked_program_id = next;
+          sessionChanged = true;
+        }
+      }
+      if (sessionChanged) {
+        sessionRepairs += 1;
+        updates.push(
+          prisma.childAbaProgramSession.update({
+            where: { id: s.id },
+            data: { guided_results_json: results as any },
+          })
+        );
+      }
+    }
+
+    return changed ? { ...w, plan_json: fixed } : w;
   });
+
   if (updates.length) {
     await Promise.all(updates);
-    logger.info({ repaired: updates.length }, 'Healed guided flow on weekly plans');
+    logger.info(
+      { repaired: updates.length, sessionRepairs },
+      'Healed guided flow on weekly plans'
+    );
   }
   return { weeks: healed, repaired: updates.length };
 }
@@ -294,18 +368,43 @@ export async function abaProgramRoutes(
         const body = (request.body || {}) as { to?: 'en' | 'id' };
         const to = body.to === 'id' ? 'id' : 'en';
 
-        const access = await hasAIAccess(user.id);
-        if (!access.hasAccess) {
-          reply.code(403);
-          return { success: false, error: access.reason || 'AI access denied' };
-        }
-
         const week = await prisma.childAbaProgramWeek.findFirst({
           where: { id: weekId, child_id: childId },
         });
         if (!week) {
           reply.code(404);
           return { success: false, error: 'Week not found' };
+        }
+
+        const currentPlan: any = week.plan_json;
+        const currentLang: 'en' | 'id' = currentPlan?.language === 'id' ? 'id' : 'en';
+        if (currentLang === to) {
+          return { success: true, data: { week, tokens_used: 0, cached: true } };
+        }
+
+        // Serve the cached translation instantly when we already have one for
+        // the target language — no AI call, no token spend. The plan we are
+        // switching away from is cached for the reverse switch.
+        const cache: Record<string, unknown> =
+          week.plan_json_i18n && typeof week.plan_json_i18n === 'object'
+            ? { ...(week.plan_json_i18n as Record<string, unknown>) }
+            : {};
+        const cachedTarget = cache[to] as Record<string, unknown> | undefined;
+        if (cachedTarget && typeof cachedTarget === 'object') {
+          cache[currentLang] = currentPlan;
+          const updated = await prisma.childAbaProgramWeek.update({
+            where: { id: week.id },
+            data: { plan_json: cachedTarget as any, plan_json_i18n: cache as any },
+          });
+          return { success: true, data: { week: updated, tokens_used: 0, cached: true } };
+        }
+
+        // Only the AI path needs subscription access and token quota — cached
+        // language swaps above are free and always allowed.
+        const access = await hasAIAccess(user.id);
+        if (!access.hasAccess) {
+          reply.code(403);
+          return { success: false, error: access.reason || 'AI access denied' };
         }
 
         const quota = await checkTokenQuota(
@@ -340,9 +439,10 @@ export async function abaProgramRoutes(
         // can remap program ids — reconcile so every program stays runnable.
         const { plan: reconciled } = reconcileGuidedFlow(synced);
 
+        cache[currentLang] = currentPlan;
         const updated = await prisma.childAbaProgramWeek.update({
           where: { id: week.id },
-          data: { plan_json: reconciled as any },
+          data: { plan_json: reconciled as any, plan_json_i18n: cache as any },
         });
 
         return { success: true, data: { week: updated, tokens_used: translated.tokensUsed } };

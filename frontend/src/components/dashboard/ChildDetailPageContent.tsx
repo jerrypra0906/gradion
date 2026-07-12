@@ -1200,6 +1200,18 @@ export function ChildDetailPageContent() {
               </div>
             )}
 
+            {abaTranslating && (
+              <div className="flex items-center gap-3 rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-3 py-2 text-sm text-[#1A2B4C]">
+                <span
+                  className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#00C1B2] border-t-transparent"
+                  aria-hidden
+                />
+                {language === 'id'
+                  ? 'Menerjemahkan program mingguan… Terjemahan pertama butuh ±20–30 detik; setelah itu pergantian bahasa langsung.'
+                  : 'Translating the weekly program… The first translation takes ~20–30 seconds; after that, switching languages is instant.'}
+              </div>
+            )}
+
             {!hasAssessmentForAba && (
               <div className="rounded-xl border border-[#FFB900]/30 bg-[#FFB900]/10 px-3 py-2 text-sm text-[#1A2B4C]">
                 {t('abaProgramNeedAssessment')}
