@@ -252,6 +252,8 @@ const WEEKLY_PLAN_SYSTEM = `You are an experienced BCBA designing a ONE-WEEK par
 
 Hard requirements:
 - Output MUST be a single JSON object (no markdown, no commentary).
+- Output MINIFIED JSON on ONE line: no indentation, no newlines, no spaces between tokens. Pretty-printed JSON wastes the output budget and gets truncated.
+- Use 5 programs and 3 activities per day unless the inputs clearly require more.
 - Keep it realistic for busy parents (short sessions, clear steps).
 - Keep ALL strings short. Prefer short phrases over long paragraphs.
 - Programs should reflect the child's Initial Observation (priorities + strengths) AND Initial Assessment report.
@@ -469,22 +471,26 @@ clinical_review_comments_json (therapist/parent log & session reviews — addres
 ${clinicalReviews}
 `;
 
-  // Attempt 1: full plan. Each program now carries steps/prompts/mastery
-  // fields, so the JSON needs substantially more room than the old shape.
+  // Attempt 1: full plan. The required JSON — 5-8 programs each carrying
+  // steps/prompts/mastery plus a full daily guided flow — runs 4-6k tokens;
+  // a smaller cap truncates the output mid-JSON and every generation fails
+  // to parse (this silently broke all weekly generation when the teaching
+  // fields shipped with a 2600 cap).
   const out1 = await generateStructuredJsonFromPrompt({
     systemInstruction: WEEKLY_PLAN_SYSTEM,
     userText: user,
-    maxOutputTokens: 2600,
+    maxOutputTokens: 8000,
     temperature: 0.15,
   });
   if (out1) return { json: ensureGuidedFlow(out1.json), tokensUsed: out1.tokensUsed };
 
-  // Attempt 2 (fallback): even smaller, to avoid model truncation / invalid JSON.
+  // Attempt 2 (fallback): tighter content constraints to reduce output size,
+  // with room to spare so the constrained plan still fits comfortably.
   const fallbackUser = `${user}\n\nExtra constraints (must follow):\n- Keep daily_guided_flow activities per day to exactly 3.\n- Keep each step under 90 characters.\n- Use very short rationales (<= 140 characters).\n- Use 5 programs exactly.\n`;
   const out2 = await generateStructuredJsonFromPrompt({
     systemInstruction: WEEKLY_PLAN_SYSTEM,
     userText: fallbackUser,
-    maxOutputTokens: 2000,
+    maxOutputTokens: 6000,
     temperature: 0.1,
   });
   if (!out2) return null;

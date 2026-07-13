@@ -4,6 +4,7 @@ import { AI_TOKEN_COST_ESTIMATES } from '../lib/aiTokenCosts.js';
 import { logger } from '../utils/logger.js';
 import {
   checkTokenQuota,
+  getLastTextGenerationError,
   hasAIAccess,
   updateTokenUsage,
 } from './ai.service.js';
@@ -184,9 +185,14 @@ export async function generateAbaWeekForChild(input: {
   });
 
   if (!ai) {
+    // Surface the real provider error so failures are diagnosable from the UI
+    // (e.g. output truncation, quota, invalid key) instead of a generic 500.
+    const detail = getLastTextGenerationError();
     return {
       ok: false,
-      error: 'Failed to generate program. Configure GEMINI_API_KEY (preferred) or OPENAI_API_KEY.',
+      error: detail
+        ? `Failed to generate program — ${detail}`
+        : 'Failed to generate program. Configure GEMINI_API_KEY (preferred) or OPENAI_API_KEY.',
       code: 500,
     };
   }

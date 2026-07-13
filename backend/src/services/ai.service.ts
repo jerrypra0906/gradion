@@ -154,7 +154,7 @@ async function generateJsonGemini(
   systemInstruction: string,
   userParts: Part[],
   options: { maxOutputTokens: number; temperature: number }
-): Promise<{ text: string; tokensUsed: number } | null> {
+): Promise<{ text: string; tokensUsed: number; truncated?: boolean } | null> {
   if (!config.ai.geminiApiKey) return null;
   try {
     const genAI = new GoogleGenerativeAI(config.ai.geminiApiKey);
@@ -174,7 +174,9 @@ async function generateJsonGemini(
     const tokensUsed =
       meta?.totalTokenCount ?? Math.ceil(text.length / 4);
     if (!text) return null;
-    return { text, tokensUsed };
+    const truncated =
+      result.response.candidates?.[0]?.finishReason === 'MAX_TOKENS';
+    return { text, tokensUsed, truncated };
   } catch (error: unknown) {
     captureTextGenerationError(error, 'Gemini', config.ai.geminiModel);
     return null;
@@ -185,7 +187,7 @@ async function generateTextOpenAI(
   systemPrompt: string,
   userPrompt: string,
   options: { maxTokens: number; temperature: number }
-): Promise<{ text: string; tokensUsed: number } | null> {
+): Promise<{ text: string; tokensUsed: number; truncated?: boolean } | null> {
   const client = getOpenAIClient();
   if (!client) {
     return null;
@@ -205,7 +207,11 @@ async function generateTextOpenAI(
     if (!text) {
       return null;
     }
-    return { text, tokensUsed };
+    return {
+      text,
+      tokensUsed,
+      truncated: response.choices[0]?.finish_reason === 'length',
+    };
   } catch (error: unknown) {
     captureTextGenerationError(error, 'OpenAI', config.ai.openaiModel);
     return null;
@@ -216,7 +222,7 @@ async function generateTextClaude(
   systemPrompt: string,
   userPrompt: string,
   options: { maxTokens: number; temperature: number }
-): Promise<{ text: string; tokensUsed: number } | null> {
+): Promise<{ text: string; tokensUsed: number; truncated?: boolean } | null> {
   const client = getAnthropicClient();
   if (!client) return null;
   try {
@@ -239,7 +245,7 @@ async function generateTextClaude(
       (resp.usage?.input_tokens ?? 0) + (resp.usage?.output_tokens ?? 0);
 
     if (!text) return null;
-    return { text, tokensUsed };
+    return { text, tokensUsed, truncated: resp.stop_reason === 'max_tokens' };
   } catch (error: unknown) {
     captureTextGenerationError(error, 'Anthropic', config.ai.anthropicModel);
     return null;
@@ -956,12 +962,15 @@ export function parseJsonObjectFromModelText(raw: string): unknown {
   }
 }
 
-async function repairJsonToSingleObjectClaude(input: string): Promise<string | null> {
+async function repairJsonToSingleObjectClaude(
+  input: string,
+  maxTokens = 1800
+): Promise<string | null> {
   const system =
     'You convert model output into STRICT valid JSON. Output ONLY the final JSON. No markdown, no code fences, no commentary.';
   const user = `Fix/repair the following text into ONE valid JSON object.\n\nRules:\n- Output must be a JSON object (starts with { and ends with }).\n- Remove any trailing commas.\n- If input is incomplete/truncated, reconstruct the most likely complete object.\n- Do not add extra keys beyond what is clearly intended.\n\n--- INPUT ---\n${input}\n--- END INPUT ---`;
 
-  const out = await generateTextClaude(system, user, { maxTokens: 1800, temperature: 0 });
+  const out = await generateTextClaude(system, user, { maxTokens, temperature: 0 });
   return out?.text || null;
 }
 
@@ -1001,12 +1010,32 @@ export async function generateStructuredJsonFromPrompt(params: {
 
   if (!first?.text) return null;
 
+  const provider = claude ? 'Anthropic' : gemini ? 'Gemini' : 'OpenAI';
+
   try {
     const json = parseJsonObjectFromModelText(first.text);
     return { json, rawText: first.text, tokensUsed: first.tokensUsed };
   } catch (err: any) {
-    // One repair attempt (common when models return markdown or slightly invalid JSON).
-    const repaired = await repairJsonToSingleObjectClaude(first.text);
+    // Diagnosable failures: a truncated output (hit maxOut) can never parse,
+    // and the tail shows where/why parsing broke.
+    logger.warn(
+      {
+        provider,
+        maxOut,
+        truncated: Boolean(first.truncated),
+        textLength: first.text.length,
+        textTail: first.text.slice(-160),
+      },
+      'Model JSON output failed to parse'
+    );
+    lastTextGenerationError = `${provider}: returned invalid JSON (${first.text.length} chars${
+      first.truncated ? `, TRUNCATED at ${maxOut} output tokens` : ''
+    })`;
+
+    // One repair attempt (common when models return markdown or slightly
+    // invalid JSON). The repair needs at least as much room as the original —
+    // a smaller cap re-truncates and can never succeed.
+    const repaired = await repairJsonToSingleObjectClaude(first.text, Math.max(1800, maxOut));
     if (!repaired) return null;
     try {
       const json = parseJsonObjectFromModelText(repaired);
@@ -1020,9 +1049,19 @@ export async function generateStructuredJsonFromPrompt(params: {
         maxTokens: Math.max(1400, maxOut),
         temperature: 0,
       });
-      if (!rewritten?.text) throw err;
-      const json = parseJsonObjectFromModelText(rewritten.text);
-      return { json, rawText: rewritten.text, tokensUsed: first.tokensUsed };
+      if (!rewritten?.text) return null;
+      try {
+        const json = parseJsonObjectFromModelText(rewritten.text);
+        return { json, rawText: rewritten.text, tokensUsed: first.tokensUsed };
+      } catch {
+        // Give the caller its own fallback path (smaller prompt) instead of
+        // throwing an opaque 500 out of the route handler.
+        logger.warn(
+          { provider, maxOut, rewriteTail: rewritten.text.slice(-160) },
+          'Model JSON rewrite also failed to parse'
+        );
+        return null;
+      }
     }
   }
 }
