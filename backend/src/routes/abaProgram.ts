@@ -29,6 +29,7 @@ import {
 } from '../services/abaProgramLearning.service.js';
 import { syncParentLogForCompletedSession } from '../services/parentLogFromAba.service.js';
 import { generateAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
+import { maybeAutoAdvanceProgram } from '../services/abaProgramAutoAdvance.service.js';
 import { computeWeekProgramProgress } from '../services/abaProgramProgress.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -583,6 +584,11 @@ export async function abaProgramRoutes(
         await recordLearningInsightForWeek(weekId);
         await syncParentLogForCompletedSession(updated.id);
 
+        // When this session pushes the week over the progress thresholds, the
+        // next program is generated automatically (fire-and-forget: generation
+        // takes ~1 minute and must not block saving the session).
+        void maybeAutoAdvanceProgram({ childId, completedWeekId: weekId });
+
         return { success: true, data: { session: updated } };
       } catch (error: unknown) {
         logger.error({ err: error }, 'Failed to complete guided ABA session');
@@ -744,6 +750,9 @@ export async function abaProgramRoutes(
 
         await recordLearningInsightForWeek(weekId);
         await syncParentLogForCompletedSession(updated.id);
+
+        // OCR-recorded practice counts toward the progress gate too.
+        void maybeAutoAdvanceProgram({ childId, completedWeekId: weekId });
 
         return {
           success: true,

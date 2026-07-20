@@ -55,6 +55,8 @@ export async function generateAbaWeekForChild(input: {
   lang: 'en' | 'id';
   /** Admins may start a new program before the progress thresholds are met. */
   bypassProgressGate?: boolean;
+  /** Origin marker stored on the week, e.g. 'auto_progress_gate'. */
+  generatedBy?: string;
 }): Promise<GenerateAbaWeekResult> {
   if (!config.features.ai) {
     return { ok: false, error: 'AI features are disabled', code: 503 };
@@ -231,6 +233,7 @@ export async function generateAbaWeekForChild(input: {
       plan_json: plan as any,
       mainstream_goal_met: mainstream,
       review_status: 'pending',
+      generated_by: input.generatedBy ?? null,
     },
     update: {
       status: 'active',
@@ -241,6 +244,7 @@ export async function generateAbaWeekForChild(input: {
       review_status: 'pending',
       reviewed_at: null,
       reviewed_by: null,
+      generated_by: input.generatedBy ?? null,
     },
   });
 

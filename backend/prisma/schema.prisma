@@ -199,6 +199,9 @@ model ChildAbaProgramWeek {
   /// Optional: therapist-style rows parsed from an uploaded therapy-notes photo (OCR).
   therapy_notes_json Json?
   mainstream_goal_met Boolean      @default(false)
+  /// How this program came to exist, e.g. 'auto_progress_gate' when generated
+  /// automatically after the practice targets were achieved.
+  generated_by String?
   // AI weekly-program admin-review gate (hidden from parents until approved).
   review_status AiReviewStatus     @default(pending)
   reviewed_at   DateTime?

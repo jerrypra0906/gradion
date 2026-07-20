@@ -223,6 +223,8 @@ export interface AbaProgramWeek {
   plan_json: unknown;
   therapy_notes_json?: unknown | null;
   mainstream_goal_met: boolean;
+  /** 'auto_progress_gate' when generated automatically after targets were achieved. */
+  generated_by?: string | null;
   created_at: string;
   updated_at: string;
   sessions?: AbaProgramSession[];

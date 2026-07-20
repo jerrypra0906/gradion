@@ -1290,15 +1290,28 @@ export function ChildDetailPageContent() {
               </div>
             </div>
 
+            {currentWeekRow &&
+              currentWeekRow.generated_by === 'auto_progress_gate' &&
+              currentWeekRow.review_status !== 'approved' && (
+                <div className="rounded-xl border border-[#00C1B2]/30 bg-gradient-to-r from-[#00C1B2]/15 to-[#FFB900]/10 px-4 py-3 text-sm text-[#1A2B4C]">
+                  <span className="mr-1.5" aria-hidden>
+                    🎉
+                  </span>
+                  {language === 'id'
+                    ? 'Selamat! Target latihan tercapai — program tahap berikutnya sudah dibuat OTOMATIS dan sedang ditinjau tim Gradion. Program baru akan muncul di sini begitu disetujui.'
+                    : 'Congratulations! The practice targets were achieved — the next-stage program was generated AUTOMATICALLY and is being reviewed by the Gradion team. It will appear here once approved.'}
+                </div>
+              )}
+
             {currentWeekRow && progressGate && !progressGate.can_generate_new && !newProgramIsSameDay && (
               <div className="rounded-xl border border-[#E5E8EB] bg-white px-3 py-2.5 text-xs text-[#1A2B4C]/80">
                 {language === 'id'
-                  ? `Program baru terbuka jika rata-rata skor ≥75% dan setiap program dijalankan minimal 3× — atau, jika rata-rata di bawah 75%, setelah setiap program dijalankan 6× (program lama akan dibawa lagi ke program baru dengan tambahan program baru). Saat ini: ${
+                  ? `Program tahap berikutnya akan dibuat OTOMATIS saat target tercapai: rata-rata skor ≥75% dan setiap program dijalankan minimal 3× — atau, jika rata-rata di bawah 75%, setelah setiap program dijalankan 6× (program lama dibawa lagi dengan tambahan program baru). Saat ini: ${
                       progressGate.avg_score_pct !== null
                         ? `rata-rata skor ${progressGate.avg_score_pct}%, `
                         : ''
                     }program paling jarang baru dijalankan ${progressGate.min_executions}× dari ${progressGate.required_executions}×.`
-                  : `A new program unlocks when the average score is ≥75% and every program has been run at least 3 times — or, if the average is below 75%, once every program has been run 6 times (the current programs then carry over into the new plan with additions). Right now: ${
+                  : `The next-stage program is generated AUTOMATICALLY once the targets are achieved: average score ≥75% with every program run at least 3 times — or, if the average is below 75%, once every program has been run 6 times (the current programs then carry over with additions). Right now: ${
                       progressGate.avg_score_pct !== null
                         ? `average score ${progressGate.avg_score_pct}%, `
                         : ''
