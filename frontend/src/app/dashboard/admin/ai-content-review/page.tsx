@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { AssessmentReportView } from '@/components/aba/AssessmentReportView';
@@ -25,6 +26,7 @@ type WeekItem = {
   week_id: number;
   child_id: number;
   child_name: string | null;
+  parent_name: string | null;
   week_start: string;
   lifecycle_status: string;
   review_status: AiReviewStatus;
@@ -54,6 +56,7 @@ export default function AiContentReviewPage() {
   const canAccess = user?.role === 'admin';
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
+  const [search, setSearch] = useState('');
   const [assessments, setAssessments] = useState<AssessmentItem[]>([]);
   const [weeks, setWeeks] = useState<WeekItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -203,6 +206,22 @@ export default function AiContentReviewPage() {
     }
   };
 
+  // Search by child or parent name (case-insensitive, matches either field).
+  const query = search.trim().toLowerCase();
+  const matches = (...fields: Array<string | null | undefined>) =>
+    !query || fields.some((f) => (f || '').toLowerCase().includes(query));
+
+  const visibleAssessments = useMemo(
+    () => assessments.filter((a) => matches(a.child_name, a.parent_name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assessments, query]
+  );
+  const visibleWeeks = useMemo(
+    () => weeks.filter((w) => matches(w.child_name, w.parent_name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weeks, query]
+  );
+
   if (!canAccess) {
     return (
       <DashboardLayout>
@@ -241,7 +260,29 @@ export default function AiContentReviewPage() {
           <Button type="button" variant="outline" size="sm" onClick={() => load()} disabled={loading}>
             {loading ? 'Loading…' : 'Refresh'}
           </Button>
+
+          <div className="relative ml-auto w-full sm:w-80">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Cari nama anak atau orang tua…"
+              aria-label="Search by child or parent name"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+            />
+          </div>
         </div>
+
+        {query && (
+          <p className="-mt-2 text-sm text-gray-600">
+            Menampilkan {visibleAssessments.length} laporan asesmen dan {visibleWeeks.length} program
+            mingguan untuk “{search.trim()}”.
+          </p>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>
@@ -253,13 +294,17 @@ export default function AiContentReviewPage() {
         {/* Assessment reports */}
         <section className="bg-white shadow sm:rounded-lg p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">
-            Assessment Reports ({assessments.length})
+            Assessment Reports ({visibleAssessments.length})
           </h2>
-          {assessments.length === 0 ? (
-            <p className="text-sm text-gray-500">No assessment reports for this filter.</p>
+          {visibleAssessments.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              {query
+                ? 'Tidak ada laporan asesmen yang cocok dengan pencarian.'
+                : 'No assessment reports for this filter.'}
+            </p>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {assessments.map((a) => {
+              {visibleAssessments.map((a) => {
                 const open = openAssessment === a.child_id;
                 const editing = editAssessmentId === a.child_id;
                 return (
@@ -403,13 +448,17 @@ export default function AiContentReviewPage() {
         {/* Weekly programs */}
         <section className="bg-white shadow sm:rounded-lg p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-3">
-            Weekly ABA Programs ({weeks.length})
+            Weekly ABA Programs ({visibleWeeks.length})
           </h2>
-          {weeks.length === 0 ? (
-            <p className="text-sm text-gray-500">No weekly programs for this filter.</p>
+          {visibleWeeks.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              {query
+                ? 'Tidak ada program mingguan yang cocok dengan pencarian.'
+                : 'No weekly programs for this filter.'}
+            </p>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {weeks.map((w) => {
+              {visibleWeeks.map((w) => {
                 const open = openWeek === w.week_id;
                 const editing = editWeekId === w.week_id;
                 return (
@@ -421,6 +470,11 @@ export default function AiContentReviewPage() {
                           <span className="text-xs text-gray-500">
                             (week {String(w.week_start).slice(0, 10)} · #{w.week_id})
                           </span>
+                          {w.parent_name && (
+                            <span className="ml-1 text-xs font-normal text-gray-500">
+                              · orang tua: {w.parent_name}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1">{statusBadge(w.review_status)}</div>
                       </div>

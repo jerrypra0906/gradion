@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Activity, Coins, Plus, UserPlus, Users } from 'lucide-react';
+import { Activity, Coins, Plus, Search, UserPlus, Users } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
 import { DashboardStatCard } from '@/components/dashboard/DashboardStatCard';
@@ -36,6 +36,8 @@ export function ChildrenPageContent() {
   // to admins) and name sorting.
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'deactivated'>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'name_asc' | 'name_desc'>('newest');
+  // Search by child name or parent name/email (staff views only).
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -96,6 +98,14 @@ export function ChildrenPageContent() {
 
   const visibleChildren = useMemo(() => {
     let list = [...children];
+    const query = search.trim().toLowerCase();
+    if (query) {
+      list = list.filter((c) =>
+        [c.name, c.parent?.name, c.parent?.email].some((field) =>
+          (field || '').toLowerCase().includes(query),
+        ),
+      );
+    }
     if (statusFilter !== 'all') {
       list = list.filter((c) =>
         statusFilter === 'active' ? c.is_active !== false : c.is_active === false,
@@ -108,7 +118,7 @@ export function ChildrenPageContent() {
     }
     // 'newest' keeps the API order (created_at desc)
     return list;
-  }, [children, statusFilter, sortBy]);
+  }, [children, statusFilter, sortBy, search]);
 
   if (!user) return null;
 
@@ -246,6 +256,30 @@ export function ChildrenPageContent() {
                   {user.role === 'parent' ? t('myChildren') : t('children')}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
+                  {!isParentView && (
+                    <div className="relative w-full sm:w-72">
+                      <Search
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1A2B4C]/40"
+                        aria-hidden
+                      />
+                      <input
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder={
+                          language === 'id'
+                            ? 'Cari nama anak atau orang tua…'
+                            : 'Search child or parent name…'
+                        }
+                        aria-label={
+                          language === 'id'
+                            ? 'Cari berdasarkan nama anak atau orang tua'
+                            : 'Search by child or parent name'
+                        }
+                        className="w-full rounded-lg border border-[#E5E8EB] bg-white py-1.5 pl-9 pr-3 text-sm text-[#1A2B4C] placeholder:text-[#1A2B4C]/40 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+                      />
+                    </div>
+                  )}
                   {isAdminView && (
                     <select
                       value={statusFilter}
@@ -287,9 +321,13 @@ export function ChildrenPageContent() {
               </div>
               {visibleChildren.length === 0 ? (
                 <div className="rounded-2xl border border-[#E5E8EB] bg-white px-6 py-10 text-center text-sm text-[#1A2B4C]/55">
-                  {language === 'id'
-                    ? 'Tidak ada anak yang cocok dengan filter ini.'
-                    : 'No children match this filter.'}
+                  {search.trim()
+                    ? language === 'id'
+                      ? `Tidak ada anak atau orang tua yang cocok dengan “${search.trim()}”.`
+                      : `No child or parent matches “${search.trim()}”.`
+                    : language === 'id'
+                      ? 'Tidak ada anak yang cocok dengan filter ini.'
+                      : 'No children match this filter.'}
                 </div>
               ) : (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">

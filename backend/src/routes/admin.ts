@@ -1543,7 +1543,16 @@ export async function adminRoutes(
           where: weekStatusWhere,
           orderBy: { id: 'desc' },
           take: 200,
-          include: { child: { select: { id: true, name: true, parent_id: true } } },
+          include: {
+            child: {
+              select: {
+                id: true,
+                name: true,
+                parent_id: true,
+                parent: { select: { id: true, name: true } },
+              },
+            },
+          },
         }),
       ]);
 
@@ -1562,6 +1571,7 @@ export async function adminRoutes(
         week_id: w.id,
         child_id: w.child_id,
         child_name: w.child?.name ?? null,
+        parent_name: w.child?.parent?.name ?? null,
         week_start: w.week_start,
         lifecycle_status: w.status,
         review_status: w.review_status,
