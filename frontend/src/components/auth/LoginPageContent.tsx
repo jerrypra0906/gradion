@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Fingerprint } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -10,14 +11,37 @@ import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { AuthPageLayout } from '@/components/auth/AuthPageLayout';
 import { AuthAlert } from '@/components/auth/AuthAlert';
 import { PasswordField } from '@/components/auth/PasswordField';
+import {
+  biometricIsAvailable,
+  getRememberedBiometricEmail,
+  loginWithBiometric,
+  rememberBiometricEmail,
+} from '@/lib/biometric';
 
 export function LoginPageContent() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const { login, setSession } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+
+  // Only offer biometrics when the device actually has it (Face ID / Touch ID /
+  // fingerprint / Windows Hello) — otherwise the button would always fail.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const available = await biometricIsAvailable();
+      if (!cancelled) setBiometricReady(available);
+    })();
+    const remembered = getRememberedBiometricEmail();
+    if (remembered) setEmail(remembered);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,12 +50,29 @@ export function LoginPageContent() {
 
     try {
       await login(email, password);
+      rememberBiometricEmail(email);
       router.push('/dashboard');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed';
       setError(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (biometricLoading) return;
+    setError('');
+    setBiometricLoading(true);
+    try {
+      const result = await loginWithBiometric(email || undefined);
+      setSession(result.token, result.user as never);
+      rememberBiometricEmail(result.user.email);
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login biometrik gagal');
+    } finally {
+      setBiometricLoading(false);
     }
   };
 
@@ -92,6 +133,19 @@ export function LoginPageContent() {
             <span className="bg-white px-3 text-gradion-navy/50">atau lanjutkan dengan</span>
           </div>
         </div>
+
+        {biometricReady && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={handleBiometricLogin}
+            disabled={biometricLoading || loading}
+          >
+            <Fingerprint className="h-5 w-5 text-gradion-teal" aria-hidden />
+            {biometricLoading ? 'Memindai…' : 'Masuk dengan biometrik'}
+          </Button>
+        )}
 
         <GoogleAuthButton onAuthenticated={() => router.push('/dashboard')} />
 

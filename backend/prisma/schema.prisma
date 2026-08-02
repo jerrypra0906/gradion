@@ -41,6 +41,7 @@ model User {
   abaProgramSessions   ChildAbaProgramSession[]
   aiTokenUsageLogs     AITokenUsageLog[]
   masterProgramEdits   AbaMasterProgramEdit[]   @relation("MasterProgramEditor")
+  webauthnCredentials  WebAuthnCredential[]
 
   @@index([referral_code])
   @@index([referred_by_code])
@@ -748,4 +749,42 @@ model AIReportSummary {
   @@index([child_id])
   @@index([start_date, end_date])
   @@map("ai_report_summaries")
+}
+
+/// A registered passkey / biometric credential (Face ID, Touch ID, fingerprint,
+/// Windows Hello). The private key never leaves the user's device.
+model WebAuthnCredential {
+  id            Int       @id @default(autoincrement())
+  user_id       Int
+  /// Base64URL credential id returned by the authenticator.
+  credential_id String    @unique
+  /// Base64URL-encoded COSE public key.
+  public_key    String
+  counter       BigInt    @default(0)
+  transports    String[]  @default([])
+  /// Friendly name shown in the UI, e.g. "iPhone (Face ID)".
+  device_label  String?
+  created_at    DateTime  @default(now())
+  last_used_at  DateTime?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("webauthn_credentials")
+}
+
+/// Short-lived WebAuthn challenge. Stored server-side so a client cannot
+/// choose its own challenge; consumed (deleted) on verification.
+model WebAuthnChallenge {
+  id         Int      @id @default(autoincrement())
+  challenge  String   @unique
+  user_id    Int?
+  email      String?
+  /// 'register' | 'login'
+  purpose    String
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([expires_at])
+  @@map("webauthn_challenges")
 }

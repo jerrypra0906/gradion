@@ -13,6 +13,14 @@ import { prisma } from '../lib/prisma.js';
 import { provisionNewUserTrialSubscription } from '../lib/subscription.js';
 import bcrypt from 'bcryptjs';
 import { logger } from '../utils/logger.js';
+import {
+  buildAuthenticationOptions,
+  buildRegistrationOptions,
+  deleteCredential,
+  listCredentialsForUser,
+  verifyAuthentication,
+  verifyRegistration,
+} from '../services/webauthn.service.js';
 
 // Helper function to auto-link therapist from pending invitations
 async function linkTherapistFromInvitations(
@@ -525,6 +533,141 @@ export async function authRoutes(
       data: userData,
     };
   });
+
+  // -----------------------------
+  // Biometric sign-in (WebAuthn passkeys: Face ID / Touch ID / fingerprint /
+  // Windows Hello). The private key never leaves the user's device; the server
+  // only stores the public key and verifies signed challenges.
+  // -----------------------------
+
+  /** Start registering this device for the signed-in user. */
+  fastify.post(
+    '/webauthn/register/options',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const options = await buildRegistrationOptions(user.id);
+      if (!options) {
+        reply.code(404);
+        return { success: false, error: 'User not found' };
+      }
+      return { success: true, data: options };
+    }
+  );
+
+  fastify.post(
+    '/webauthn/register/verify',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const body = (request.body || {}) as { response?: unknown; device_label?: string };
+      if (!body.response || typeof body.response !== 'object') {
+        reply.code(400);
+        return { success: false, error: 'Missing registration response' };
+      }
+
+      const result = await verifyRegistration({
+        userId: user.id,
+        response: body.response as any,
+        deviceLabel: body.device_label ?? null,
+      });
+      if (!result.ok) {
+        reply.code(400);
+        return { success: false, error: result.error };
+      }
+
+      logger.info({ userId: user.id }, 'Registered biometric credential');
+      return {
+        success: true,
+        data: { id: result.credentialId, device_label: result.deviceLabel },
+      };
+    }
+  );
+
+  /** Start a biometric sign-in. Email is optional (discoverable passkeys). */
+  fastify.post('/webauthn/login/options', { config: loginRateLimit }, async (request) => {
+    const body = (request.body || {}) as { email?: string };
+    const options = await buildAuthenticationOptions(body.email);
+    return { success: true, data: options };
+  });
+
+  /** Finish biometric sign-in and issue the same JWT as password login. */
+  fastify.post('/webauthn/login/verify', { config: loginRateLimit }, async (request, reply) => {
+    const body = (request.body || {}) as { response?: unknown };
+    if (!body.response || typeof body.response !== 'object') {
+      reply.code(400);
+      return { success: false, error: 'Missing authentication response' };
+    }
+
+    const result = await verifyAuthentication(body.response as any);
+    if (!result.ok) {
+      reply.code(401);
+      return { success: false, error: result.error };
+    }
+
+    const user = await userService.findUserById(result.userId);
+    if (!user) {
+      reply.code(401);
+      return { success: false, error: 'Account not found' };
+    }
+    if (!user.is_email_verified) {
+      reply.code(403);
+      return {
+        success: false,
+        error: 'Please verify your email address before signing in.',
+      };
+    }
+
+    const signOptions: SignOptions = {
+      expiresIn: config.auth.jwtExpiresIn as unknown as SignOptions['expiresIn'],
+    };
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      config.auth.jwtSecret,
+      signOptions
+    );
+
+    logger.info({ userId: user.id }, 'Biometric sign-in succeeded');
+    return {
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          is_email_verified: user.is_email_verified,
+        },
+      },
+    };
+  });
+
+  /** Devices registered for biometric sign-in. */
+  fastify.get('/webauthn/credentials', { preHandler: authenticate }, async (request) => {
+    const user = (request as AuthenticatedRequest).user!;
+    const rows = await listCredentialsForUser(user.id);
+    return { success: true, data: rows };
+  });
+
+  fastify.delete(
+    '/webauthn/credentials/:id',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const user = (request as AuthenticatedRequest).user!;
+      const id = parseInt((request.params as { id: string }).id, 10);
+      if (Number.isNaN(id)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid credential id' };
+      }
+      const removed = await deleteCredential(user.id, id);
+      if (!removed) {
+        reply.code(404);
+        return { success: false, error: 'Credential not found' };
+      }
+      return { success: true, message: 'Biometric device removed' };
+    }
+  );
 
   fastify.log.info('✅ All auth routes registered successfully');
 }

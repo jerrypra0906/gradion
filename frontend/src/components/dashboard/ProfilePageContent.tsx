@@ -3,7 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Copy, KeyRound, Sparkles, User } from 'lucide-react';
+import { Check, Copy, Fingerprint, KeyRound, Sparkles, User } from 'lucide-react';
+import {
+  BiometricCredential,
+  biometricIsAvailable,
+  listBiometricCredentials,
+  registerBiometric,
+  removeBiometricCredential,
+} from '@/lib/biometric';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
 import { DashboardSectionCard } from '@/components/dashboard/DashboardSectionCard';
@@ -110,6 +117,74 @@ export function ProfilePageContent() {
   }>({});
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Biometric sign-in (passkeys)
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricDevices, setBiometricDevices] = useState<BiometricCredential[]>([]);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricRemovingId, setBiometricRemovingId] = useState<number | null>(null);
+  const [biometricMessage, setBiometricMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  // Biometric sign-in is only offered on devices that actually have it.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      const supported = await biometricIsAvailable();
+      if (cancelled) return;
+      setBiometricSupported(supported);
+      try {
+        const devices = await listBiometricCredentials();
+        if (!cancelled) setBiometricDevices(devices);
+      } catch {
+        // Non-fatal: the section simply shows no devices.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const handleEnableBiometric = async () => {
+    if (biometricBusy) return;
+    setBiometricBusy(true);
+    setBiometricMessage(null);
+    try {
+      await registerBiometric();
+      setBiometricDevices(await listBiometricCredentials());
+      setBiometricMessage({
+        type: 'success',
+        text: 'Login biometrik aktif di perangkat ini. Lain kali cukup pindai wajah/sidik jari saat masuk.',
+      });
+    } catch (err) {
+      setBiometricMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Gagal mengaktifkan biometrik',
+      });
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
+
+  const handleRemoveBiometric = async (id: number) => {
+    if (biometricRemovingId) return;
+    setBiometricRemovingId(id);
+    setBiometricMessage(null);
+    try {
+      await removeBiometricCredential(id);
+      setBiometricDevices((prev) => prev.filter((d) => d.id !== id));
+      setBiometricMessage({ type: 'success', text: 'Perangkat biometrik dihapus.' });
+    } catch (err) {
+      setBiometricMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Gagal menghapus perangkat',
+      });
+    } finally {
+      setBiometricRemovingId(null);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -546,6 +621,78 @@ export function ProfilePageContent() {
                 This account uses Google Sign-In and does not have a password to change here.
                 Continue signing in with Google on the login page.
               </p>
+            </div>
+          )}
+        </DashboardSectionCard>
+
+        <DashboardSectionCard
+          title="Login Biometrik"
+          subtitle="Masuk cepat dengan Face ID, Touch ID, sidik jari, atau Windows Hello"
+        >
+          {biometricMessage && (
+            <div
+              className={cn(
+                'mb-4 rounded-lg border px-4 py-3 text-sm',
+                biometricMessage.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-red-200 bg-red-50 text-red-700',
+              )}
+            >
+              {biometricMessage.text}
+            </div>
+          )}
+
+          {!biometricSupported ? (
+            <div className="flex gap-3 rounded-xl border border-[#E5E8EB] bg-[#FDF8F1] p-4 text-sm text-[#1A2B4C]/70">
+              <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-[#1A2B4C]/45" aria-hidden />
+              <p>
+                Perangkat atau browser ini belum mendukung login biometrik. Coba buka Gradion di
+                HP Anda (Face ID / sidik jari) atau laptop dengan Windows Hello / Touch ID.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="max-w-2xl text-sm text-[#1A2B4C]/70">
+                Aktifkan di perangkat yang sering Anda pakai. Data biometrik Anda tetap tersimpan
+                di perangkat — Gradion hanya menyimpan kunci verifikasi, bukan sidik jari atau
+                wajah Anda. Kata sandi tetap bisa dipakai kapan saja.
+              </p>
+
+              <Button variant="brand" onClick={handleEnableBiometric} disabled={biometricBusy} className="gap-2">
+                <Fingerprint className="h-4 w-4" aria-hidden />
+                {biometricBusy ? 'Mendaftarkan…' : 'Aktifkan di perangkat ini'}
+              </Button>
+
+              {biometricDevices.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-[#1A2B4C]">Perangkat terdaftar</h3>
+                  <ul className="divide-y divide-[#E5E8EB] overflow-hidden rounded-xl border border-[#E5E8EB]">
+                    {biometricDevices.map((device) => (
+                      <li key={device.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-[#1A2B4C]">
+                            {device.device_label || 'Perangkat'}
+                          </div>
+                          <div className="text-xs text-[#1A2B4C]/55">
+                            Didaftarkan {new Date(device.created_at).toLocaleDateString('id-ID')}
+                            {device.last_used_at
+                              ? ` · terakhir dipakai ${new Date(device.last_used_at).toLocaleDateString('id-ID')}`
+                              : ' · belum pernah dipakai'}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={biometricRemovingId === device.id}
+                          onClick={() => handleRemoveBiometric(device.id)}
+                        >
+                          {biometricRemovingId === device.id ? 'Menghapus…' : 'Hapus'}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </DashboardSectionCard>

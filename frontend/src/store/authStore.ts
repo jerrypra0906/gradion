@@ -9,6 +9,8 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** Adopt a session obtained outside the password flow (e.g. biometric sign-in). */
+  setSession: (token: string, user: User) => void;
   register: (
     name: string,
     email: string,
@@ -55,6 +57,12 @@ export const useAuthStore = create<AuthState>()(
         } catch (error: any) {
           throw new Error(error.response?.data?.error || 'Login failed');
         }
+      },
+
+      setSession: (token: string, user: User) => {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+        set({ user, token, isAuthenticated: true });
       },
 
       register: async (
