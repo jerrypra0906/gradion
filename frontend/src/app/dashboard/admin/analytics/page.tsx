@@ -7,6 +7,52 @@ import { useAuthStore } from '@/store/authStore';
 
 type DetailRequest = { metric: string; params?: Record<string, string> };
 
+type EngagementReport = {
+  range_days: number;
+  totals: {
+    views: number;
+    sessions: number;
+    users: number;
+    avg_duration_ms: number;
+    single_page_sessions: number;
+    bounce_rate_pct: number;
+  };
+  pages: Array<{
+    path: string;
+    views: number;
+    visitors: number;
+    avg_duration_ms: number;
+    median_duration_ms: number;
+    exits: number;
+    exit_rate_pct: number;
+  }>;
+};
+
+type ErrorReport = {
+  range_days: number;
+  total: number;
+  groups: Array<{
+    fingerprint: string;
+    source: string;
+    path: string | null;
+    name: string | null;
+    message: string;
+    status_code: number | null;
+    occurrences: number;
+    affected_users: number;
+    last_seen: string;
+  }>;
+};
+
+/** "1m 20s" / "45s" — durations are far easier to scan than raw ms. */
+function formatDuration(ms: number): string {
+  const total = Math.round((ms || 0) / 1000);
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
 /** A clickable analytics number that opens the drill-down modal. */
 function Metric({
   value,
@@ -38,6 +84,37 @@ export default function AdminAnalyticsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+
+  // Product analytics: page engagement, drop-off, and captured errors.
+  const [rangeDays, setRangeDays] = useState(7);
+  const [engagement, setEngagement] = useState<EngagementReport | null>(null);
+  const [errorReport, setErrorReport] = useState<ErrorReport | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setUsageLoading(true);
+      try {
+        const [eng, errs] = await Promise.all([
+          apiClient.get<ApiResponse<EngagementReport>>(
+            `/admin/analytics/engagement?days=${rangeDays}`,
+          ),
+          apiClient.get<ApiResponse<ErrorReport>>(`/admin/analytics/errors?days=${rangeDays}`),
+        ]);
+        if (cancelled) return;
+        if (eng.data.success) setEngagement(eng.data.data || null);
+        if (errs.data.success) setErrorReport(errs.data.data || null);
+      } catch {
+        // Section shows its empty state.
+      } finally {
+        if (!cancelled) setUsageLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeDays]);
 
   useEffect(() => {
     if (user && user.role === 'admin') {
@@ -118,7 +195,7 @@ export default function AdminAnalyticsPage() {
         </div>
 
         {/* Overview Stats */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <Metric
@@ -147,6 +224,16 @@ export default function AdminAnalyticsPage() {
                 className="text-2xl font-bold text-gray-900"
               />
               <div className="text-sm font-medium text-gray-500">Daily Active Users</div>
+            </div>
+          </div>
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <Metric
+                value={analytics.overview.weekly_active_users ?? 0}
+                onClick={() => openDetail({ metric: 'weekly_active_users' })}
+                className="text-2xl font-bold text-gray-900"
+              />
+              <div className="text-sm font-medium text-gray-500">Weekly Active Users</div>
             </div>
           </div>
           <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -429,6 +516,185 @@ export default function AdminAnalyticsPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ---------- Product analytics: engagement, drop-off, errors ---------- */}
+      <div className="px-4 sm:px-0 space-y-6 pb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">User Behaviour & Errors</h2>
+            <p className="text-sm text-gray-600">
+              Which screens users visit, how long they stay, where they drop off, and what broke.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Range:</label>
+            <select
+              value={rangeDays}
+              onChange={(e) => setRangeDays(Number(e.target.value))}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value={1}>Last 24 hours</option>
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Headline engagement numbers */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          {[
+            { label: 'Page views', value: engagement?.totals.views ?? 0 },
+            { label: 'Visits (sessions)', value: engagement?.totals.sessions ?? 0 },
+            { label: 'Signed-in users', value: engagement?.totals.users ?? 0 },
+            {
+              label: 'Avg time on page',
+              value: formatDuration(engagement?.totals.avg_duration_ms ?? 0),
+            },
+            {
+              label: 'Bounce rate',
+              value: `${engagement?.totals.bounce_rate_pct ?? 0}%`,
+              hint: `${engagement?.totals.single_page_sessions ?? 0} one-page visits`,
+            },
+          ].map((card) => (
+            <div key={card.label} className="rounded-lg bg-white p-4 shadow">
+              <div className="text-xs font-medium uppercase text-gray-500">{card.label}</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{card.value}</div>
+              {card.hint && <div className="mt-0.5 text-xs text-gray-500">{card.hint}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Per-page engagement + drop-off */}
+        <div className="rounded-lg bg-white shadow">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h3 className="text-lg font-semibold text-gray-900">Pages & drop-off</h3>
+            <p className="text-sm text-gray-600">
+              “Exit rate” is how often a visit ended on that page — the highest rates show where
+              people are leaving Gradion.
+            </p>
+          </div>
+          {usageLoading ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-500">Loading…</div>
+          ) : !engagement || engagement.pages.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-500">
+              No page views recorded yet for this range.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Page', 'Views', 'Visitors', 'Avg time', 'Median', 'Exits', 'Exit rate'].map(
+                      (h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500"
+                        >
+                          {h}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {engagement.pages.map((p) => (
+                    <tr key={p.path}>
+                      <td className="px-4 py-2 font-mono text-sm text-gray-900">{p.path}</td>
+                      <td className="px-4 py-2 text-sm text-gray-800">{p.views}</td>
+                      <td className="px-4 py-2 text-sm text-gray-800">{p.visitors}</td>
+                      <td className="px-4 py-2 text-sm text-gray-800">
+                        {formatDuration(p.avg_duration_ms)}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-600">
+                        {formatDuration(p.median_duration_ms)}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-800">{p.exits}</td>
+                      <td className="px-4 py-2 text-sm">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            p.exit_rate_pct >= 60
+                              ? 'bg-red-100 text-red-800'
+                              : p.exit_rate_pct >= 35
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-green-100 text-green-800'
+                          }`}
+                        >
+                          {p.exit_rate_pct}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Captured errors */}
+        <div className="rounded-lg bg-white shadow">
+          <div className="border-b border-gray-200 px-5 py-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Errors ({errorReport?.total ?? 0})
+            </h3>
+            <p className="text-sm text-gray-600">
+              Grouped by problem. App crashes, server faults (5xx) and network failures email
+              care@gradion.id — same problem muted for 1 hour, max 8 emails/hour. Expected 4xx
+              responses (missing content, expired session, quota) are recorded here only.
+            </p>
+          </div>
+          {usageLoading ? (
+            <div className="px-5 py-10 text-center text-sm text-gray-500">Loading…</div>
+          ) : !errorReport || errorReport.groups.length === 0 ? (
+            <div className="px-5 py-10 text-center text-sm text-green-700">
+              No errors captured in this range. 🎉
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Problem', 'Page', 'Type', 'Count', 'Users', 'Last seen'].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2 text-left text-xs font-medium uppercase text-gray-500"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {errorReport.groups.map((g) => (
+                    <tr key={g.fingerprint}>
+                      <td className="max-w-md px-4 py-2 text-sm text-gray-900">
+                        <div className="font-medium">{g.name || 'Error'}</div>
+                        <div className="truncate text-xs text-gray-600" title={g.message}>
+                          {g.message}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 font-mono text-xs text-gray-700">
+                        {g.path || '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700">
+                        {g.source}
+                        {g.status_code ? ` · ${g.status_code}` : ''}
+                      </td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">
+                        {g.occurrences}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700">{g.affected_users}</td>
+                      <td className="px-4 py-2 text-xs text-gray-600">
+                        {new Date(g.last_seen).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

@@ -8,6 +8,7 @@ import { Prisma, SubscriptionPlan } from '@prisma/client';
 import { listAutismCases, seedMockAutismCases } from '../services/abaAutismCase.service.js';
 import {
   findMissingMasterIds,
+  getMasterProgramPracticeStats,
   mergeMasterPrograms,
   setMasterProgramArchived,
   syncWeeklyPlanToMasterPrograms,
@@ -15,6 +16,7 @@ import {
   updateMasterProgram,
 } from '../services/abaMasterProgram.service.js';
 import { healWeekPlans } from './abaProgram.js';
+import { getEngagementReport, getErrorReport } from '../services/analytics.service.js';
 import { UserService } from '../services/user.service.js';
 import { Role } from '../types/index.js';
 
@@ -80,7 +82,22 @@ export async function adminRoutes(
         prisma.abaMasterProgram.count({ where }),
       ]);
 
-      return { success: true, data: { rows, total } };
+      // Real usage: how many children practiced each program, how often, and
+      // how independently (aggregated across every child's recorded sessions).
+      const practice = await getMasterProgramPracticeStats();
+      const rowsWithStats = rows.map((r) => ({
+        ...r,
+        practice: practice.get(r.id) ?? {
+          children_assigned: 0,
+          children_practiced: 0,
+          executions: 0,
+          trials: 0,
+          score_pct: null,
+          last_practiced_at: null,
+        },
+      }));
+
+      return { success: true, data: { rows: rowsWithStats, total } };
     }
   );
 
@@ -816,6 +833,17 @@ export async function adminRoutes(
             'Users with a session today'
           );
           break;
+        case 'weekly_active_users':
+          data = await listUsers(
+            {
+              OR: [
+                { sessions: { some: { date: { gte: thisWeek } } } },
+                { parentLogs: { some: { created_at: { gte: thisWeek } } } },
+              ],
+            },
+            'Users active in the last 7 days'
+          );
+          break;
         case 'monthly_active_users':
           data = await listUsers(
             {
@@ -887,6 +915,30 @@ export async function adminRoutes(
     }
   );
 
+  // Page engagement + drop-off (admin only)
+  fastify.get(
+    '/analytics/engagement',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request) => {
+      const q = (request.query || {}) as { days?: string };
+      const days = Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
+      const data = await getEngagementReport(days);
+      return { success: true, data };
+    }
+  );
+
+  // Captured errors, grouped (admin only)
+  fastify.get(
+    '/analytics/errors',
+    { preHandler: [authenticate, requireRole('admin')] },
+    async (request) => {
+      const q = (request.query || {}) as { days?: string };
+      const days = Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
+      const data = await getErrorReport(days);
+      return { success: true, data };
+    }
+  );
+
   // Get dashboard analytics (admin only)
   fastify.get(
     '/analytics',
@@ -924,6 +976,16 @@ export async function adminRoutes(
               },
             },
           },
+        },
+      });
+
+      // Same activity definition as MAU, over the last 7 days.
+      const weeklyActiveUsers = await prisma.user.count({
+        where: {
+          OR: [
+            { sessions: { some: { date: { gte: thisWeek } } } },
+            { parentLogs: { some: { created_at: { gte: thisWeek } } } },
+          ],
         },
       });
 
@@ -1128,6 +1190,7 @@ export async function adminRoutes(
             total_logs: totalLogs,
             total_subscriptions: totalSubscriptions,
             daily_active_users: dailyActiveUsers,
+            weekly_active_users: weeklyActiveUsers,
             monthly_active_users: monthlyActiveUsers,
           },
           aba_adoption: {
@@ -1231,16 +1294,36 @@ export async function adminRoutes(
         return { success: false, error: 'Invalid user id' };
       }
 
+      // Explicit select: never ship password_hash / google_id to the client.
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          phone_number: true,
+          referral_code: true,
+          referred_by_code: true,
+          points: true,
+          created_at: true,
+          is_email_verified: true,
+          password_hash: true,
+          google_id: true,
           subscription: true,
           aiTokenWallet: true,
+          children: {
+            where: { is_active: true },
+            select: { id: true, name: true, created_at: true },
+            orderBy: { created_at: 'desc' },
+            take: 20,
+          },
           _count: {
             select: {
               children: true,
               parentLogs: true,
               sessions: true,
+              webauthnCredentials: true,
             },
           },
         },
@@ -1251,7 +1334,17 @@ export async function adminRoutes(
         return { success: false, error: 'User not found' };
       }
 
-      return { success: true, data: user };
+      const { password_hash, google_id, ...safeUser } = user;
+      return {
+        success: true,
+        data: {
+          ...safeUser,
+          // Sign-in methods available to this account.
+          has_password: Boolean(password_hash),
+          has_google: Boolean(google_id),
+          biometric_devices: user._count.webauthnCredentials,
+        },
+      };
     }
   );
 

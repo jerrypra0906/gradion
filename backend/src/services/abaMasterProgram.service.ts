@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma.js';
 import { generateStructuredJsonFromPrompt } from './ai.service.js';
+// Shared with the weekly progress gate so library stats and the child page
+// always agree on what counts as a scored trial.
+import { countTrialTokens } from './abaProgramProgress.service.js';
 
 type MasterLang = 'en' | 'id';
 
@@ -486,6 +489,153 @@ export async function updateMasterProgram(input: {
   });
 
   return { ok: true, row: updated };
+}
+
+export type MasterProgramPracticeStats = {
+  /** Distinct children whose weekly plan included this program. */
+  children_assigned: number;
+  /** Distinct children who actually recorded practice for it. */
+  children_practiced: number;
+  /** How many times it was practiced (one completed activity = one execution). */
+  executions: number;
+  /** Scored trials (+, p, -). "os" is skipped and not scored. */
+  trials: number;
+  /** Share of trials the child did independently (+), or null when untried. */
+  score_pct: number | null;
+  last_practiced_at: Date | null;
+};
+
+
+/**
+ * Real-world usage of every master program, aggregated across all children:
+ * how many families were given it, how many actually practiced it, how often,
+ * and how independently they performed. Counts follow merge redirects so a
+ * survivor inherits the history of the duplicates merged into it.
+ *
+ * Uses the same trial scoring as the per-week progress gate, so the library
+ * numbers agree with what parents and admins see on a child page.
+ */
+export async function getMasterProgramPracticeStats(): Promise<
+  Map<string, MasterProgramPracticeStats>
+> {
+  const weeks = await prisma.childAbaProgramWeek.findMany({
+    select: {
+      child_id: true,
+      plan_json: true,
+      therapy_notes_json: true,
+      sessions: {
+        where: { status: 'completed' },
+        select: { guided_results_json: true, ocr_parsed_json: true, completed_at: true },
+      },
+    },
+  });
+
+  // Program ids referenced by plans may point at masters that were later
+  // merged away; roll their history into the surviving master.
+  const referenced = new Set<string>();
+  for (const w of weeks) {
+    const programs = (w.plan_json as { programs?: Array<{ id?: unknown }> } | null)?.programs;
+    for (const p of Array.isArray(programs) ? programs : []) {
+      if (p?.id != null) referenced.add(String(p.id));
+    }
+  }
+  const redirects = await resolveMergeRedirects([...referenced]);
+  const resolve = (id: string) => redirects.get(id) || id;
+
+  type Acc = {
+    assigned: Set<number>;
+    practiced: Set<number>;
+    executions: number;
+    independent: number;
+    counted: number;
+    last: Date | null;
+  };
+  const acc = new Map<string, Acc>();
+  const get = (id: string): Acc => {
+    let row = acc.get(id);
+    if (!row) {
+      row = { assigned: new Set(), practiced: new Set(), executions: 0, independent: 0, counted: 0, last: null };
+      acc.set(id, row);
+    }
+    return row;
+  };
+
+  for (const week of weeks) {
+    const plan = week.plan_json as { programs?: Array<Record<string, unknown>> } | null;
+    const programs = Array.isArray(plan?.programs) ? plan!.programs! : [];
+
+    // Name -> id, so OCR rows that only carry a program name still count.
+    const idByName = new Map<string, string>();
+    for (const p of programs) {
+      const id = p?.id != null ? resolve(String(p.id)) : '';
+      if (!id) continue;
+      get(id).assigned.add(week.child_id);
+      const name = String(p?.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (name) idByName.set(name, id);
+    }
+
+    const record = (programId: string, trialData: unknown, at: Date | null) => {
+      const { independent, counted } = countTrialTokens(trialData);
+      if (counted === 0) return;
+      const row = get(programId);
+      row.executions += 1;
+      row.independent += independent;
+      row.counted += counted;
+      row.practiced.add(week.child_id);
+      if (at && (!row.last || at > row.last)) row.last = at;
+    };
+
+    for (const session of week.sessions) {
+      const at = session.completed_at ?? null;
+
+      const guided = session.guided_results_json as {
+        activities?: Array<{
+          linked_program_id?: string | null;
+          trial_string?: string;
+          trial_sets?: Array<{ trial_data?: string }>;
+        }>;
+      } | null;
+      for (const a of Array.isArray(guided?.activities) ? guided!.activities! : []) {
+        const pid = a?.linked_program_id != null ? resolve(String(a.linked_program_id)) : '';
+        if (!pid) continue;
+        if (Array.isArray(a.trial_sets) && a.trial_sets.length) {
+          record(pid, a.trial_sets.map((ts) => String(ts?.trial_data ?? '')).join(' '), at);
+        } else if (a.trial_string) {
+          record(pid, a.trial_string, at);
+        }
+      }
+
+      // Uploaded therapy notes: rows matched to a program by the OCR step.
+      const ocr = session.ocr_parsed_json as {
+        rows?: Array<{ program?: string; trial_data?: string }>;
+        matched_program_ids?: Array<{ row_index?: number; program_id?: string | null }>;
+      } | null;
+      const matchByRow = new Map<number, string>();
+      for (const m of Array.isArray(ocr?.matched_program_ids) ? ocr!.matched_program_ids! : []) {
+        if (m?.program_id && Number.isInteger(m?.row_index)) {
+          matchByRow.set(Number(m.row_index), resolve(String(m.program_id)));
+        }
+      }
+      (Array.isArray(ocr?.rows) ? ocr!.rows! : []).forEach((r, i) => {
+        const byName = idByName.get(String(r?.program ?? '').trim().toLowerCase().replace(/\s+/g, ' '));
+        const pid = matchByRow.get(i) || byName || '';
+        if (pid) record(pid, r?.trial_data, at);
+      });
+    }
+  }
+
+  const stats = new Map<string, MasterProgramPracticeStats>();
+  for (const [id, row] of acc) {
+    stats.set(id, {
+      children_assigned: row.assigned.size,
+      children_practiced: row.practiced.size,
+      executions: row.executions,
+      trials: row.counted,
+      score_pct: row.counted > 0 ? Math.round((row.independent / row.counted) * 100) : null,
+      last_practiced_at: row.last,
+    });
+  }
+  return stats;
 }
 
 /** Of the given program ids, which have no master row at all (any language). */

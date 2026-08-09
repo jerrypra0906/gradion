@@ -30,6 +30,7 @@ import { sitemapRoutes } from './routes/sitemap.js';
 import { videoFidelityRoutes } from './routes/videoFidelity.js';
 import { modulesRoutes } from './routes/modules.js';
 import { abaProgramRoutes } from './routes/abaProgram.js';
+import { analyticsRoutes } from './routes/analytics.js';
 import { seedMockAutismCases } from './services/abaAutismCase.service.js';
 import { ensureDefaultInitialObservationTemplate } from './services/initialObservationTemplate.service.js';
 import { prisma } from './lib/prisma.js';
@@ -181,6 +182,7 @@ async function buildServer() {
   await server.register(videoFidelityRoutes, { prefix: '/api/video-fidelity' });
   await server.register(modulesRoutes, { prefix: '/api/modules' });
   await server.register(abaProgramRoutes, { prefix: '/api/aba-program' });
+  await server.register(analyticsRoutes, { prefix: '/api/analytics' });
 
   // Global error handler - sanitize errors in production and standardize responses
   server.setErrorHandler((error, request, reply) => {

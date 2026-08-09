@@ -73,6 +73,26 @@ apiClient.interceptors.response.use(
       request: error.request,
     });
     
+    // Report real failures for admin triage. 401s are routine (expired
+    // session) and analytics endpoints are skipped to avoid feedback loops.
+    const status = error.response?.status;
+    const failedUrl = error.config?.url || '';
+    if (typeof window !== 'undefined' && status !== 401 && !failedUrl.includes('/analytics/')) {
+      const serverError = (error.response?.data as { error?: string } | undefined)?.error;
+      void import('@/lib/analytics')
+        .then(({ reportError }) =>
+          reportError({
+            source: 'api',
+            name: error.code || 'ApiError',
+            message: `${error.config?.method?.toUpperCase() || 'GET'} ${failedUrl} — ${
+              serverError || error.message
+            }`,
+            status_code: status,
+          }),
+        )
+        .catch(() => undefined);
+    }
+
     if (error.response?.status === 401) {
       // Handle unauthorized - clear token and redirect to login
       if (typeof window !== 'undefined') {
@@ -528,6 +548,8 @@ export interface AdminAnalytics {
     total_logs: number;
     total_subscriptions: number;
     daily_active_users: number;
+    /** Active in the last 7 days (same activity definition as MAU). */
+    weekly_active_users?: number;
     monthly_active_users: number;
   };
   aba_adoption: {

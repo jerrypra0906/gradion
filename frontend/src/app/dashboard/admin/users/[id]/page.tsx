@@ -11,6 +11,32 @@ import { Input } from '@/components/ui/Input';
 interface UserWithSubscription extends User {
   subscription?: Subscription | null;
   aiTokenWallet?: AITokenWallet | null;
+  phone_number?: string | null;
+  referral_code?: string | null;
+  referred_by_code?: string | null;
+  points?: number;
+  created_at?: string;
+  is_email_verified?: boolean;
+  has_password?: boolean;
+  has_google?: boolean;
+  biometric_devices?: number;
+  children?: Array<{ id: number; name: string; created_at: string }>;
+  _count?: {
+    children: number;
+    parentLogs: number;
+    sessions: number;
+    webauthnCredentials: number;
+  };
+}
+
+/** One label/value row in the profile card. */
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-2">
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className="text-right text-sm font-medium text-gray-900">{children}</span>
+    </div>
+  );
 }
 
 export default function UserDetailPage() {
@@ -324,6 +350,93 @@ export default function UserDetailPage() {
               {savingRole ? 'Saving role...' : 'Save Role'}
             </Button>
           </div>
+        </div>
+
+        {/* Profile information (read-only reference for the admin) */}
+        <div className="bg-white shadow rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Profile Information</h2>
+          <div className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
+            <div className="divide-y divide-gray-100">
+              <InfoRow label="Full name">{userData.name}</InfoRow>
+              <InfoRow label="Email">
+                <span className="break-all">{userData.email}</span>{' '}
+                <span
+                  className={`ml-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    userData.is_email_verified
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {userData.is_email_verified ? 'verified' : 'unverified'}
+                </span>
+              </InfoRow>
+              <InfoRow label="Phone number">{userData.phone_number || '—'}</InfoRow>
+              <InfoRow label="Role">
+                <span className="capitalize">{userData.role}</span>
+              </InfoRow>
+              <InfoRow label="Member since">
+                {userData.created_at ? new Date(userData.created_at).toLocaleDateString() : '—'}
+              </InfoRow>
+              <InfoRow label="User ID">#{userData.id}</InfoRow>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              <InfoRow label="Sign-in methods">
+                <span className="flex flex-wrap justify-end gap-1">
+                  {userData.has_password && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">Password</span>
+                  )}
+                  {userData.has_google && (
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-800">
+                      Google
+                    </span>
+                  )}
+                  {(userData.biometric_devices ?? 0) > 0 && (
+                    <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs text-teal-800">
+                      Biometric ({userData.biometric_devices})
+                    </span>
+                  )}
+                  {!userData.has_password &&
+                    !userData.has_google &&
+                    !(userData.biometric_devices ?? 0) && <span>—</span>}
+                </span>
+              </InfoRow>
+              <InfoRow label="Referral code">
+                <span className="font-mono">{userData.referral_code || '—'}</span>
+              </InfoRow>
+              <InfoRow label="Referred by">
+                <span className="font-mono">{userData.referred_by_code || '—'}</span>
+              </InfoRow>
+              <InfoRow label="Points balance">
+                {(userData.points ?? 0).toLocaleString('id-ID')}
+              </InfoRow>
+              <InfoRow label="Children">{userData._count?.children ?? 0}</InfoRow>
+              <InfoRow label="Activity logs / sessions">
+                {userData._count?.parentLogs ?? 0} / {userData._count?.sessions ?? 0}
+              </InfoRow>
+            </div>
+          </div>
+
+          {userData.children && userData.children.length > 0 && (
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <h3 className="mb-2 text-sm font-semibold text-gray-900">
+                Active children ({userData.children.length})
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {userData.children.map((child) => (
+                  <button
+                    key={child.id}
+                    type="button"
+                    onClick={() => router.push(`/dashboard/children/${child.id}`)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800 transition-colors hover:border-[#00C1B2] hover:text-[#00A896]"
+                    title="Open child page"
+                  >
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

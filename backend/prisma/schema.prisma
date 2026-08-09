@@ -42,6 +42,8 @@ model User {
   aiTokenUsageLogs     AITokenUsageLog[]
   masterProgramEdits   AbaMasterProgramEdit[]   @relation("MasterProgramEditor")
   webauthnCredentials  WebAuthnCredential[]
+  analyticsPageViews   AnalyticsPageView[]
+  analyticsErrors      AnalyticsError[]
 
   @@index([referral_code])
   @@index([referred_by_code])
@@ -787,4 +789,56 @@ model WebAuthnChallenge {
 
   @@index([expires_at])
   @@map("webauthn_challenges")
+}
+
+/// One page view with time-on-page. `path` is normalized (ids -> :id) so views
+/// aggregate per screen and no child/user id is stored in the route.
+model AnalyticsPageView {
+  id            BigInt   @id @default(autoincrement())
+  session_id    String
+  user_id       Int?
+  role          String?
+  path          String
+  referrer_path String?
+  duration_ms   Int      @default(0)
+  /// True when the visitor left the app from this page (last view of a session).
+  is_exit       Boolean  @default(false)
+  device        String?
+  entered_at    DateTime
+  created_at    DateTime @default(now())
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([entered_at])
+  @@index([path])
+  @@index([session_id])
+  @@index([user_id])
+  @@map("analytics_page_views")
+}
+
+/// A captured error (client exception or failed API call) for triage.
+model AnalyticsError {
+  id          BigInt    @id @default(autoincrement())
+  session_id  String?
+  user_id     Int?
+  role        String?
+  path        String?
+  /// 'client' | 'api' | 'server'
+  source      String
+  name        String?
+  message     String
+  stack       String?
+  status_code Int?
+  /// Hash of source+path+name+message: groups repeats and throttles alerts.
+  fingerprint String
+  device      String?
+  notified_at DateTime?
+  created_at  DateTime  @default(now())
+
+  user User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([created_at])
+  @@index([fingerprint])
+  @@index([user_id])
+  @@map("analytics_errors")
 }

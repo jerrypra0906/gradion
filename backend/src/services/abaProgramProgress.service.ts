@@ -35,23 +35,36 @@ function normName(x: unknown) {
     .replace(/\s+/g, ' ');
 }
 
-function countTokens(raw: unknown): { independent: number; counted: number } {
-  const tokens = String(raw ?? '')
-    .split(/\s+/)
-    .filter(Boolean);
+/**
+ * Score a trial string. Symbols are read character by character so both the
+ * spaced form the guided UI writes ("+ + p - os") and the compact form that
+ * arrives from OCR'd therapy notes ("++p-os") count identically — splitting on
+ * whitespace alone silently scored compact strings as zero.
+ *
+ * "+" independent · "p" prompted · "-" incorrect · "os" skipped (not scored).
+ */
+export function countTrialTokens(raw: unknown): { independent: number; counted: number } {
+  const s = String(raw ?? '');
   let independent = 0;
   let counted = 0;
-  for (const t of tokens) {
-    if (t === '+') {
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === '+') {
       independent += 1;
       counted += 1;
-    } else if (t === 'p' || t === 'P' || t === '-') {
+    } else if (c === 'p' || c === 'P') {
       counted += 1;
+    } else if (c === '-' || c === '−' || c === '–') {
+      counted += 1;
+    } else if ((c === 'o' || c === 'O') && (s[i + 1] === 's' || s[i + 1] === 'S')) {
+      i += 1; // "os" — trial skipped, deliberately unscored
     }
-    // other tokens (e.g. "os") are not scored
+    // whitespace, commas and any other separators are ignored
   }
   return { independent, counted };
 }
+
+const countTokens = countTrialTokens;
 
 export function computeWeekProgramProgress(week: {
   plan_json: unknown;

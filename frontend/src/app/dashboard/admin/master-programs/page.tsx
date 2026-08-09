@@ -28,11 +28,27 @@ type AbaMasterProgramRow = {
   is_archived?: boolean;
   merged_into_id?: string | null;
   usage_count?: number;
+  /** Aggregated real-world practice across all children. */
+  practice?: {
+    children_assigned: number;
+    children_practiced: number;
+    executions: number;
+    trials: number;
+    score_pct: number | null;
+    last_practiced_at: string | null;
+  };
   created_at: string;
   updated_at: string;
 };
 
 type StatusFilter = 'active' | 'curated' | 'archived';
+
+/** Green ≥75% (mastering), amber ≥50%, red below — matches the advancement gate. */
+function scoreToneClass(score: number): string {
+  if (score >= 75) return 'bg-green-100 text-green-800';
+  if (score >= 50) return 'bg-amber-100 text-amber-800';
+  return 'bg-red-100 text-red-800';
+}
 
 function jsonListToBullets(v: any): string[] {
   if (Array.isArray(v)) return v.map((x) => String(x)).filter(Boolean);
@@ -517,6 +533,37 @@ export default function AdminMasterProgramsPage() {
                             </span>
                           ) : null}
                         </div>
+
+                        {/* Real practice: children, frequency, score */}
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                            {isId ? 'Anak' : 'Children'}: {r.practice?.children_practiced ?? 0}
+                            {r.practice?.children_assigned
+                              ? `/${r.practice.children_assigned}`
+                              : ''}
+                          </span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                            {isId ? 'Dijalankan' : 'Practiced'}: {r.practice?.executions ?? 0}×
+                          </span>
+                          {typeof r.practice?.score_pct === 'number' ? (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${scoreToneClass(
+                                r.practice.score_pct,
+                              )}`}
+                              title={
+                                isId
+                                  ? 'Rata-rata trial mandiri (+) dari seluruh anak'
+                                  : 'Average independent (+) trials across all children'
+                              }
+                            >
+                              {isId ? 'Skor' : 'Score'}: {r.practice.score_pct}%
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                              {isId ? 'Belum ada skor' : 'No score yet'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className="text-gray-400 text-sm shrink-0" aria-hidden>
                         {expanded ? '▾' : '▸'}
@@ -526,6 +573,55 @@ export default function AdminMasterProgramsPage() {
 
                   {expanded ? (
                     <div className="px-4 pb-4 pl-10 space-y-3 text-sm text-gray-800">
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                        <div className="mb-2 text-xs font-semibold text-gray-900">
+                          {isId ? 'Penggunaan nyata' : 'Real-world usage'}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          {[
+                            {
+                              label: isId ? 'Anak menjalankan' : 'Children practised',
+                              value: `${r.practice?.children_practiced ?? 0}`,
+                              hint: isId
+                                ? `${r.practice?.children_assigned ?? 0} anak mendapat program ini`
+                                : `${r.practice?.children_assigned ?? 0} were given this program`,
+                            },
+                            {
+                              label: isId ? 'Frekuensi' : 'Frequency',
+                              value: `${r.practice?.executions ?? 0}×`,
+                              hint: isId ? 'total sesi tercatat' : 'recorded sessions',
+                            },
+                            {
+                              label: isId ? 'Trial dinilai' : 'Scored trials',
+                              value: `${r.practice?.trials ?? 0}`,
+                              hint: isId ? '+ , p , − (os tidak dihitung)' : '+ , p , − (os not scored)',
+                            },
+                            {
+                              label: isId ? 'Skor mandiri' : 'Independence score',
+                              value:
+                                typeof r.practice?.score_pct === 'number'
+                                  ? `${r.practice.score_pct}%`
+                                  : '—',
+                              hint: isId ? 'rata-rata semua anak' : 'average across children',
+                            },
+                          ].map((s) => (
+                            <div key={s.label}>
+                              <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                                {s.label}
+                              </div>
+                              <div className="text-lg font-bold text-gray-900">{s.value}</div>
+                              <div className="text-[11px] text-gray-500">{s.hint}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {r.practice?.last_practiced_at ? (
+                          <div className="mt-2 text-[11px] text-gray-500">
+                            {isId ? 'Terakhir dijalankan' : 'Last practised'}:{' '}
+                            {new Date(r.practice.last_practiced_at).toLocaleString()}
+                          </div>
+                        ) : null}
+                      </div>
+
                       {r.rationale ? (
                         <div>
                           <div className="text-xs font-semibold text-gray-900">
