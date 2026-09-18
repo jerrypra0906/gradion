@@ -53,7 +53,7 @@ function ListEditor({
     <div>
       <div className="text-xs font-medium text-gray-700 mb-1">{label}</div>
       <div className="space-y-2">
-        {items.length === 0 && <div className="text-xs text-gray-400">—</div>}
+        {items.length === 0 && <div className="text-xs text-gray-600">—</div>}
         {items.map((item, i) => (
           <div key={i} className="flex items-center gap-2">
             <input

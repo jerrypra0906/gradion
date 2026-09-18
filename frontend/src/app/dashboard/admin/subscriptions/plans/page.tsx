@@ -319,7 +319,7 @@ export default function SubscriptionPlansPage() {
                         <div className="text-sm text-gray-600 mb-2">AI Features</div>
                         {plan.aiAccess ? (
                           <div className="space-y-2">
-                            <div className="flex items-center text-green-600">
+                            <div className="flex items-center text-green-700">
                               <svg
                                 className="w-5 h-5 mr-2"
                                 fill="none"
@@ -340,7 +340,7 @@ export default function SubscriptionPlansPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center text-gray-400">
+                          <div className="flex items-center text-gray-600">
                             <svg
                               className="w-5 h-5 mr-2"
                               fill="none"

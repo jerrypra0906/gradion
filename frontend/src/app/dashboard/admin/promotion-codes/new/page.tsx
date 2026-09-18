@@ -74,7 +74,7 @@ export default function NewPromotionCodePage() {
           <div className="space-y-6">
             <div>
               <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
-                Code <span className="text-red-500">*</span>
+                Code <span className="text-red-600">*</span>
               </label>
               <input
                 type="text"
@@ -107,7 +107,7 @@ export default function NewPromotionCodePage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="discount_type" className="block text-sm font-medium text-gray-700 mb-1">
-                  Discount Type <span className="text-red-500">*</span>
+                  Discount Type <span className="text-red-600">*</span>
                 </label>
                 <select
                   id="discount_type"
@@ -128,7 +128,7 @@ export default function NewPromotionCodePage() {
 
               <div>
                 <label htmlFor="discount_value" className="block text-sm font-medium text-gray-700 mb-1">
-                  Discount Value <span className="text-red-500">*</span>
+                  Discount Value <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
@@ -154,7 +154,7 @@ export default function NewPromotionCodePage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="start_date" className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date <span className="text-red-500">*</span>
+                  Start Date <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="date"
@@ -168,7 +168,7 @@ export default function NewPromotionCodePage() {
 
               <div>
                 <label htmlFor="end_date" className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date <span className="text-red-500">*</span>
+                  End Date <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="date"

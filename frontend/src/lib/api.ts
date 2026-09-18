@@ -195,6 +195,8 @@ export interface Child {
   initial_assessment_report_id?: string | null;
   assessment_review_status?: AiReviewStatus;
   has_pending_assessment?: boolean;
+  /** Why AI content is missing (lapsed subscription, no tokens, feature off). */
+  ai_availability?: { available: boolean; reason: string | null };
   /** Soft delete: false = deactivated (visible to admin only). */
   is_active?: boolean;
   deactivated_at?: string | null;
@@ -398,6 +400,8 @@ export interface CMSContent {
   publish_at?: string | null;
   unpublish_at?: string | null;
   banner_id?: number | null;
+  /** Language the admin authored in; the other is machine-translated on read. */
+  source_lang?: 'en' | 'id';
   created_at: string;
   updated_at: string;
 }

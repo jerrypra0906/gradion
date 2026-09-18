@@ -66,7 +66,7 @@ export default function NewAdminUserPage() {
         <div className="mb-8">
           <Link
             href="/dashboard/admin/users"
-            className="text-sm font-semibold text-[#00C1B2] hover:text-[#00A896] transition-colors"
+            className="text-sm font-semibold text-[#00736C] hover:text-[#005E58] transition-colors"
           >
             ← Back to Users
           </Link>

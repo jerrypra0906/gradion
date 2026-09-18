@@ -359,7 +359,7 @@ function CheckoutPageContent() {
                       ) : (
                         <li className="flex items-start">
                           <svg
-                            className="w-5 h-5 text-gray-400 mr-2 flex-shrink-0 mt-0.5"
+                            className="w-5 h-5 text-gray-600 mr-2 flex-shrink-0 mt-0.5"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -371,7 +371,7 @@ function CheckoutPageContent() {
                               d="M6 18L18 6M6 6l12 12"
                             />
                           </svg>
-                          <span className="text-gray-400">No AI Features</span>
+                          <span className="text-gray-600">No AI Features</span>
                         </li>
                       )}
                     </ul>
@@ -610,8 +610,8 @@ function CheckoutPageContent() {
                 </div>
                 {promotionDiscount > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-green-600">Promotion Discount</span>
-                    <span className="text-green-600 font-medium">-{formatPrice(promotionDiscount)}</span>
+                    <span className="text-green-700">Promotion Discount</span>
+                    <span className="text-green-700 font-medium">-{formatPrice(promotionDiscount)}</span>
                   </div>
                 )}
                 {pointsDiscount > 0 && (

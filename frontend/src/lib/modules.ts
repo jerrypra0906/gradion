@@ -164,3 +164,67 @@ export function youtubeIdFromUrl(url: string): string | null {
   return m?.[1] ?? null;
 }
 
+
+/**
+ * Roughly how long a module takes, derived from its own text plus its quiz —
+ * an estimate, never a claim about the video. A "Terkunci" badge that states
+ * nothing, and a module list that states nothing about length, both ask the
+ * parent to commit to an unknown amount of time.
+ */
+export function moduleMinutes(module: LearningModule): number {
+  const words = [
+    module.concept.en,
+    ...module.bullets.en,
+    ...module.quiz.flatMap((q) => [q.question.en, ...q.options.map((o) => o.label.en)]),
+  ]
+    .join(' ')
+    .split(/\s+/)
+    .filter(Boolean).length;
+  // ~180 wpm reading, plus a minute for the video intro and thinking time.
+  return Math.max(2, Math.round(words / 180) + 1 + module.quiz.length);
+}
+
+export function moduleLengthLabel(module: LearningModule, language: string): string {
+  const mins = moduleMinutes(module);
+  const quiz = module.quiz.length;
+  const quizPart =
+    quiz > 0
+      ? language === 'id'
+        ? ` · ${quiz} pertanyaan`
+        : ` · ${quiz} question${quiz === 1 ? '' : 's'}`
+      : '';
+  return language === 'id' ? `± ${mins} menit${quizPart}` : `~${mins} min${quizPart}`;
+}
+
+/** The module that unlocks a locked one, by order. */
+export function prerequisiteModule(module: LearningModule): LearningModule | null {
+  return learningModules.find((m) => m.order === module.order - 1) ?? null;
+}
+
+/**
+ * The one module worth offering while a specific program is about to be run.
+ *
+ * Learning is currently a second curriculum: a parent who came to help their
+ * child also has coursework, unlocked in sequence, away from the moment the
+ * skill is needed. This picks the module that matches the program in hand so
+ * it can be offered inside the session instead.
+ */
+export function moduleForProgram(program: {
+  domain?: unknown;
+  prompts?: unknown;
+  steps?: unknown;
+} | null): LearningModule | null {
+  const byKey = (key: ModuleKey) => learningModules.find((m) => m.key === key) ?? null;
+  if (!program) return byKey('module-1');
+
+  const domain = String(program.domain ?? '').toLowerCase();
+  if (/behav|perilaku|tantrum|emosi/.test(domain)) return byKey('module-5');
+
+  const prompts = Array.isArray(program.prompts) ? program.prompts.length : 0;
+  if (prompts > 0) return byKey('module-3');
+
+  const steps = Array.isArray(program.steps) ? program.steps.length : 0;
+  if (steps >= 4) return byKey('module-4');
+
+  return byKey('module-1');
+}

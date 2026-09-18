@@ -263,7 +263,7 @@ export default function AiContentReviewPage() {
 
           <div className="relative ml-auto w-full sm:w-80">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-600"
               aria-hidden
             />
             <input
@@ -272,7 +272,7 @@ export default function AiContentReviewPage() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari nama anak atau orang tua…"
               aria-label="Search by child or parent name"
-              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-600 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
             />
           </div>
         </div>

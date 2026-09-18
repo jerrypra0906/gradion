@@ -1,12 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
-  Calendar,
-  ClipboardList,
+  ChevronDown,
   Gauge,
   Pencil,
   Plus,
@@ -29,6 +28,14 @@ import {
   AbaProgramWeek,
   AbaProgramSession,
 } from '@/lib/api';
+import {
+  FREQUENCY_CHOICES,
+  SEVERITY_CHOICES,
+  describeFrequency,
+  describePercent,
+  describeSeverity,
+  labelForChoice,
+} from '@/lib/initialObservationTemplate';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -38,31 +45,9 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
 
-function sliderColorRedToGreen(value: number, min: number, max: number) {
-  const t = (clamp(value, min, max) - min) / (max - min);
-  const hue = lerp(0, 120, t);
-  return `hsl(${hue} 80% 45%)`;
-}
 
-function sliderColorGreenToRed(value: number, min: number, max: number) {
-  const t = (clamp(value, min, max) - min) / (max - min);
-  const hue = lerp(120, 0, t);
-  return `hsl(${hue} 80% 45%)`;
-}
 
-function rangeTrackStyle(value: number, min: number, max: number, color: string) {
-  const pct = ((clamp(value, min, max) - min) / (max - min)) * 100;
-  return {
-    background: `linear-gradient(to right, ${color} 0%, ${color} ${pct}%, #E5E8EB ${pct}%, #E5E8EB 100%)`,
-    height: '8px',
-    borderRadius: '9999px',
-    appearance: 'none' as const,
-  };
-}
 
 function ymdOf(d: Date) {
   const y = d.getFullYear();
@@ -88,9 +73,30 @@ function formatChildAgeYears(birthdate: string | undefined) {
   );
 }
 
-function formatHours(h: number) {
-  if (h % 1 === 0) return String(h);
-  return Number(h.toFixed(2)).toString();
+
+/**
+ * Practice time as a parent says it — "50 menit dari 3 jam minggu ini" — not
+ * "0.83/3h". The stat cards were reading like a developer console.
+ */
+function humanHours(h: number, language: string): string {
+  const mins = Math.round(h * 60);
+  if (mins < 60) return language === 'id' ? `${mins} menit` : `${mins} min`;
+  const whole = Math.floor(mins / 60);
+  const rest = mins % 60;
+  const hourWord = language === 'id' ? 'jam' : whole === 1 ? 'hour' : 'hours';
+  if (rest === 0) return `${whole} ${hourWord}`;
+  return language === 'id' ? `${whole} jam ${rest} menit` : `${whole}h ${rest}m`;
+}
+
+/** "2026-06-29" → "29 Jun". Parents do not read ISO dates. */
+function humanYmd(ymd: string | null, language: string): string {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  return d.toLocaleDateString(language === 'id' ? 'id-ID' : 'en-GB', {
+    day: 'numeric',
+    month: 'short',
+  });
 }
 
 function quotaBarColor(percentage: number) {
@@ -102,6 +108,13 @@ function quotaBarColor(percentage: number) {
 export function ChildDetailPageContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Dashboard's "Weekly home program (ABA)" action deep-links here to start it.
+  const startProgramParam = searchParams.get('startProgram');
+  const autoStartProgram = startProgramParam === '1' || startProgramParam === 'print';
+  /** The dashboard's "Pakai lembar cetak" link goes straight to the paper path. */
+  const autoStartPrint = startProgramParam === 'print';
+  const autoStartHandledRef = useRef(false);
   const { user } = useAuthStore();
   const { t, language } = useTranslation();
   const [child, setChild] = useState<Child | null>(null);
@@ -122,6 +135,9 @@ export function ChildDetailPageContent() {
   const [abaActiveWeek, setAbaActiveWeek] = useState<AbaProgramWeek | null>(null);
   const [abaSessionId, setAbaSessionId] = useState<number | null>(null);
   const [abaChosenMode, setAbaChosenMode] = useState<'guided' | 'upload' | null>(null);
+  const [maintenanceMenuOpen, setMaintenanceMenuOpen] = useState(false);
+  const [confirmNewProgram, setConfirmNewProgram] = useState(false);
+  const [showGateRule, setShowGateRule] = useState(false);
   const [abaExpandedProgramId, setAbaExpandedProgramId] = useState<string | null>(null);
   const [abaTranslating, setAbaTranslating] = useState(false);
   const abaLocaleSyncInFlightRef = useRef(false);
@@ -165,6 +181,40 @@ export function ChildDetailPageContent() {
     !currentWeekRow || isAdminViewer || Boolean(progressGate?.can_generate_new);
   const newProgramIsSameDay = Boolean(currentWeekRow) && currentWeekStartYmd === todayYmd;
   const previousWeeks = useMemo(() => abaWeeks.slice(1), [abaWeeks]);
+
+  /**
+   * A guided session left in progress with trials already recorded, and where
+   * it stopped — so an interrupted session is something to pick up rather than
+   * something that silently vanished.
+   */
+  const resumableSession = useMemo(() => {
+    const sessions = currentWeekRow?.sessions || [];
+    const open = sessions
+      .filter((s) => s.mode === 'guided' && s.status === 'in_progress')
+      .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0];
+    if (!open) return null;
+    const activities = (open.guided_results_json as { activities?: any[] } | null)?.activities;
+    if (!Array.isArray(activities)) return null;
+    const total = activities.length;
+    let taskIdx = -1;
+    let trials = 0;
+    activities.forEach((a, i) => {
+      const count = (Array.isArray(a?.trial_sets) ? a.trial_sets : []).reduce(
+        (sum: number, s: any) => sum + (Number(s?.trial_count) || 0),
+        0,
+      );
+      if (count > 0 || a?.finished) {
+        taskIdx = i;
+        if (count > 0) trials = count;
+      }
+    });
+    if (taskIdx < 0) return null;
+    const label =
+      language === 'id'
+        ? `Tugas ${taskIdx + 1}/${total}, trial ${trials}`
+        : `Task ${taskIdx + 1}/${total}, trial ${trials}`;
+    return { session: open, label };
+  }, [currentWeekRow, language]);
 
   // Auto-translate assessment when the selected language version is missing
   useEffect(() => {
@@ -301,7 +351,7 @@ export function ChildDetailPageContent() {
       setAbaLoading(true);
       setAbaError('');
       const response = await apiClient.get<ApiResponse<{ weeks: AbaProgramWeek[] }>>(
-        `/aba-program/children/${params.id}/weeks`
+        `/aba-program/children/${params.id}/weeks?lang=${language === 'id' ? 'id' : 'en'}`
       );
       if (response.data.success) {
         setAbaWeeks(response.data.data?.weeks || []);
@@ -364,12 +414,68 @@ export function ChildDetailPageContent() {
     setAbaStartProgramId(null);
   };
 
+  // Arriving from the dashboard's weekly-program action: open the "start
+  // program" chooser once the week has loaded, then drop the flag from the URL
+  // so a refresh or back-navigation doesn't reopen it.
+  useEffect(() => {
+    if (!autoStartProgram || autoStartHandledRef.current) return;
+    // `child` is required to start a session; the weeks request often wins the
+    // race, and without this the auto-start silently no-opped and left the
+    // parent sitting on the child page.
+    if (abaLoading || !currentWeekRow || !child) return;
+    const isRunnable =
+      user?.role !== 'parent' || currentWeekRow.review_status === 'approved';
+    if (!isRunnable) return;
+
+    autoStartHandledRef.current = true;
+    if (autoStartPrint) openAbaPrintFlow(currentWeekRow);
+    else openAbaStartModal(currentWeekRow);
+    // Drop the flag from the URL without a Next.js navigation — router.replace
+    // re-fetches the route and tears down the modal state we just set.
+    try {
+      window.history.replaceState({}, '', `/dashboard/children/${params.id}`);
+    } catch {
+      // Non-fatal: the flag just stays in the URL.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartProgram, abaLoading, currentWeekRow?.id, child?.id]);
+
+  /**
+   * "Mulai program" used to open a modal asking how to run it — two neutral
+   * cards, no default, the previous answer forgotten — every single day, when
+   * the answer is the same one the family gave yesterday. Go straight into the
+   * guided session; the printed sheet stays reachable as a quiet link, and
+   * whichever path the parent used last becomes the default.
+   */
   const openAbaStartModal = (week: AbaProgramWeek, programId?: string | null) => {
+    let remembered: 'guided' | 'upload' = 'guided';
+    try {
+      if (window.localStorage.getItem(`gradion-aba-mode:${params.id}`) === 'upload') {
+        remembered = 'upload';
+      }
+    } catch {
+      // Blocked storage — guided is the right default anyway.
+    }
+    setAbaActiveWeek(week);
+    setAbaSessionId(null);
+    setAbaChosenMode(null);
+    setAbaStartProgramId(programId || null);
+    if (remembered === 'upload') {
+      setAbaModalOpen(true);
+      void handleChooseAbaMode('upload', week, programId || null);
+      return;
+    }
+    void handleChooseAbaMode('guided', week, programId || null);
+  };
+
+  /** Explicitly asking for the printed sheet, from the quiet link. */
+  const openAbaPrintFlow = (week: AbaProgramWeek, programId?: string | null) => {
     setAbaActiveWeek(week);
     setAbaSessionId(null);
     setAbaChosenMode(null);
     setAbaStartProgramId(programId || null);
     setAbaModalOpen(true);
+    void handleChooseAbaMode('upload', week, programId || null);
   };
 
   const createAbaSession = async (week: AbaProgramWeek, mode: 'guided' | 'upload') => {
@@ -383,23 +489,37 @@ export function ChildDetailPageContent() {
     return response.data.data.session;
   };
 
-  const handleChooseAbaMode = async (mode: 'guided' | 'upload') => {
-    if (!child || !abaActiveWeek) return;
+  const handleChooseAbaMode = async (
+    mode: 'guided' | 'upload',
+    week?: AbaProgramWeek | null,
+    programId?: string | null,
+  ) => {
+    // The week/programId are passed in when starting straight from a button:
+    // the matching state setters have not committed yet at that point.
+    const activeWeek = week ?? abaActiveWeek;
+    const activeProgramId = programId !== undefined ? programId : abaStartProgramId;
+    if (!child || !activeWeek) return;
     try {
       setAbaError('');
       setAbaChosenMode(mode);
-      const session = await createAbaSession(abaActiveWeek, mode);
+      const session = await createAbaSession(activeWeek, mode);
       setAbaSessionId(session.id);
+      try {
+        window.localStorage.setItem(`gradion-aba-mode:${params.id}`, mode);
+      } catch {
+        // Non-fatal: the default just stays "guided" next time.
+      }
       if (mode === 'guided') {
         resetAbaModal();
         router.push(
-          `/dashboard/children/${child.id}/aba-program?weekId=${abaActiveWeek.id}&sessionId=${session.id}${
-            abaStartProgramId ? `&programId=${encodeURIComponent(abaStartProgramId)}` : ''
+          `/dashboard/children/${child.id}/aba-program?weekId=${activeWeek.id}&sessionId=${session.id}${
+            activeProgramId ? `&programId=${encodeURIComponent(activeProgramId)}` : ''
           }`
         );
       }
     } catch (err: any) {
       setAbaError(err.message || err.response?.data?.error || 'Failed to start session');
+      setAbaModalOpen(true);
     }
   };
 
@@ -701,47 +821,32 @@ export function ChildDetailPageContent() {
     const eye = obs1.eye_contact || {};
     const compliance = obs1.compliance_pct || {};
 
+    // Read back what the parent chose, not the number it is stored as. A
+    // disabled slider showing "2" is the old form's shape, not an answer.
     const pctRow = (label: string, value: any) => {
       const has = Number.isFinite(value);
-      const v = has ? clamp(Number(value), 0, 100) : 0;
-      const color = sliderColorRedToGreen(v, 0, 100);
+      const described = has ? describePercent(value, language === 'id' ? 'id' : 'en') : null;
       return (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="text-sm text-[#1A2B4C]/80">{label}</div>
-            <div className="text-sm font-semibold text-[#1A2B4C]">{has ? `${v}%` : '—'}</div>
+        <div className="flex items-baseline justify-between gap-4 py-1.5">
+          <div className="text-sm text-[#1A2B4C]/80">{label}</div>
+          <div className="shrink-0 text-right text-sm font-semibold text-[#1A2B4C]">
+            {described ?? (language === 'id' ? 'Belum diisi' : 'Not answered')}
           </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            disabled
-            value={v}
-            className="w-full cursor-default accent-[#00C1B2]"
-            style={rangeTrackStyle(v, 0, 100, color)}
-          />
         </div>
       );
     };
 
-    const fsCell = (value: any) => {
+    const fsCell = (value: any, kind: 'f' | 's') => {
       const has = Number.isFinite(value);
-      const v = has ? clamp(Number(value), 0, 5) : 0;
-      const color = sliderColorGreenToRed(v, 0, 5);
+      const lang = language === 'id' ? 'id' : 'en';
+      const described = has
+        ? kind === 'f'
+          ? describeFrequency(value, lang)
+          : describeSeverity(value, lang)
+        : null;
       return (
-        <div className="min-w-[72px]">
-          <div className="text-sm font-medium text-[#1A2B4C]">{has ? v : '—'}</div>
-          <input
-            type="range"
-            min={0}
-            max={5}
-            step={1}
-            disabled
-            value={v}
-            className="w-full cursor-default accent-[#00C1B2]"
-            style={rangeTrackStyle(v, 0, 5, color)}
-          />
+        <div className="text-sm font-medium text-[#1A2B4C]">
+          {described ?? (language === 'id' ? 'Belum diisi' : 'Not answered')}
         </div>
       );
     };
@@ -794,35 +899,82 @@ export function ChildDetailPageContent() {
                           className="mb-2 w-full rounded-lg border border-[#E5E8EB] bg-white px-3 py-1.5 text-sm text-[#1A2B4C] placeholder:text-[#1A2B4C]/35 focus:border-[#00C1B2] focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/30"
                         />
                       )}
-                      <div className="grid grid-cols-2 gap-3">
-                        {(['f', 's'] as const).map((side) => (
-                          <div key={side}>
-                            <div className="mb-1 text-xs text-[#1A2B4C]/60">
-                              {side === 'f' ? t('checklistFrequencyCol') : t('checklistSeverityCol')}
-                            </div>
-                            <div className="text-sm font-medium text-[#1A2B4C]">{entry[side]}</div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={5}
-                              step={1}
-                              value={entry[side]}
-                              onChange={(e) =>
-                                setBehaviorDraft((prev) => ({
-                                  ...prev,
-                                  [row.key]: { ...entry, [side]: Number(e.target.value) },
-                                }))
-                              }
-                              className="w-full accent-[#00C1B2]"
-                              style={rangeTrackStyle(
-                                entry[side],
-                                0,
-                                5,
-                                sliderColorGreenToRed(entry[side], 0, 5),
-                              )}
-                            />
+                      {/*
+                        Editing offers the same anchored answers the parent gave
+                        when they filled the observation — not the 0–5 sliders
+                        those answers replaced.
+                      */}
+                      <div className="space-y-3">
+                        <div>
+                          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#1A2B4C]/55">
+                            {language === 'id' ? 'Seberapa sering?' : 'How often?'}
                           </div>
-                        ))}
+                          <div className="space-y-1.5">
+                            {FREQUENCY_CHOICES.map((choice) => {
+                              const selected = String(entry.f) === choice.value;
+                              return (
+                                <button
+                                  key={choice.value}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() =>
+                                    setBehaviorDraft((prev) => ({
+                                      ...prev,
+                                      [row.key]: {
+                                        ...entry,
+                                        f: Number(choice.value),
+                                        ...(choice.value === '0' ? { s: 0 } : {}),
+                                      },
+                                    }))
+                                  }
+                                  className={cn(
+                                    'flex min-h-[44px] w-full items-center rounded-lg border px-3 py-2 text-left text-sm transition',
+                                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/50',
+                                    selected
+                                      ? 'border-[#00C1B2] bg-[#00C1B2]/10 font-semibold text-[#00736C]'
+                                      : 'border-[#E5E8EB] bg-white text-[#1A2B4C] hover:border-[#00C1B2]/40',
+                                  )}
+                                >
+                                  {labelForChoice(choice, language === 'id' ? 'id' : 'en')}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {entry.f > 0 && (
+                          <div>
+                            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#1A2B4C]/55">
+                              {language === 'id' ? 'Seberapa berat?' : 'How hard is it?'}
+                            </div>
+                            <div className="space-y-1.5">
+                              {SEVERITY_CHOICES.map((choice) => {
+                                const selected = String(entry.s) === choice.value;
+                                return (
+                                  <button
+                                    key={choice.value}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() =>
+                                      setBehaviorDraft((prev) => ({
+                                        ...prev,
+                                        [row.key]: { ...entry, s: Number(choice.value) },
+                                      }))
+                                    }
+                                    className={cn(
+                                      'flex min-h-[44px] w-full items-center rounded-lg border px-3 py-2 text-left text-sm transition',
+                                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/50',
+                                      selected
+                                        ? 'border-[#00C1B2] bg-[#00C1B2]/10 font-semibold text-[#00736C]'
+                                        : 'border-[#E5E8EB] bg-white text-[#1A2B4C] hover:border-[#00C1B2]/40',
+                                    )}
+                                  >
+                                    {labelForChoice(choice, language === 'id' ? 'id' : 'en')}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -859,11 +1011,11 @@ export function ChildDetailPageContent() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistFrequencyCol')}</div>
-                      {fsCell(r.f)}
+                      {fsCell(r.f, 'f')}
                     </div>
                     <div>
                       <div className="mb-1 text-xs text-[#1A2B4C]/60">{t('checklistSeverityCol')}</div>
-                      {fsCell(r.s)}
+                      {fsCell(r.s, 's')}
                     </div>
                   </div>
                 </div>
@@ -964,6 +1116,38 @@ export function ChildDetailPageContent() {
   // AI content is hidden until approved. Admins get the same gated view as
   // parents here — they review content in the AI Content Review page.
   const isGatedViewer = user.role === 'parent' || user.role === 'admin';
+  /** Operational metering and state codes are for staff, not for families. */
+  const isParentOnlyViewer = user.role === 'parent';
+  // Set when generation was skipped because the account lost AI access (lapsed
+  // subscription, exhausted tokens, feature disabled). Computed live by the API,
+  // so it clears itself as soon as the account is renewed. API reasons come back
+  // in English; translate the known ones so the page stays Indonesian-first.
+  const aiBlockedReason = (() => {
+    if (!child.ai_availability || child.ai_availability.available !== false) return null;
+    const raw = child.ai_availability.reason || '';
+    if (language !== 'id') {
+      return raw || 'AI features require an active subscription.';
+    }
+    if (/free trial has ended/i.test(raw)) {
+      return 'Masa uji coba gratis Anda telah berakhir. Tingkatkan ke paket Pro atau Premium untuk melanjutkan fitur AI.';
+    }
+    if (/subscription has expired/i.test(raw)) {
+      return 'Masa langganan Anda telah berakhir.';
+    }
+    if (/no subscription found/i.test(raw)) {
+      return 'Belum ada langganan aktif pada akun ini.';
+    }
+    if (/does not include AI/i.test(raw)) {
+      return 'Paket langganan Anda saat ini belum termasuk fitur AI.';
+    }
+    if (/insufficient tokens/i.test(raw)) {
+      return 'Token AI Anda tidak mencukupi untuk membuat laporan bulan ini.';
+    }
+    if (/AI features are currently disabled/i.test(raw)) {
+      return 'Fitur AI sedang dinonaktifkan sementara.';
+    }
+    return raw || 'Fitur AI memerlukan langganan aktif.';
+  })();
   const assessmentPending = isGatedViewer && Boolean(child.has_pending_assessment);
   // Behavior (OBS 1) stays editable until APPROVED AI content exists —
   // empty or still-pending assessments/programs don't lock it.
@@ -1038,23 +1222,32 @@ export function ChildDetailPageContent() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/*
+          Four stat cards with nothing actionable in them — including an AI
+          token meter a paying parent can neither read nor act on — became one
+          sentence. Token metering is admin billing data and lives in Children
+          Oversight; it is not a number to put in front of a family.
+        */}
+        <div
+          className={cn(
+            'grid grid-cols-1 gap-4',
+            isParentOnlyViewer ? 'sm:grid-cols-1' : 'sm:grid-cols-2',
+          )}
+        >
           <DashboardStatCard
-            value={`${formatHours(weeklyHoursExecuted)}/${child.monthly_quota}h`}
-            label={language === 'id' ? 'Jam sesi minggu ini' : 'Hours this week'}
+            value={humanHours(weeklyHoursExecuted, language)}
+            label={
+              language === 'id'
+                ? `dari ${child.monthly_quota} jam minggu ini`
+                : `of ${child.monthly_quota} hours this week`
+            }
             icon={Gauge}
             accent="teal"
-          />
-          <DashboardStatCard
-            value={child.monthly_quota}
-            label={t('weeklyHoursTarget')}
-            icon={Calendar}
-            accent="navy"
             action={
               canEditHoursTarget ? (
                 <button
                   type="button"
-                  className="rounded-lg p-1.5 text-[#1A2B4C]/40 hover:bg-[#1A2B4C]/5 hover:text-[#00C1B2] transition-colors"
+                  className="rounded-lg p-1.5 text-[#1A2B4C]/40 hover:bg-[#1A2B4C]/5 hover:text-[#005E58] transition-colors"
                   onClick={openTargetEdit}
                   aria-label={
                     language === 'id' ? 'Ubah target jam mingguan' : 'Edit weekly hours target'
@@ -1066,18 +1259,14 @@ export function ChildDetailPageContent() {
               ) : undefined
             }
           />
-          <DashboardStatCard
-            value={activityLogs.length}
-            label={t('activityLogHistory')}
-            icon={ClipboardList}
-            accent="gold"
-          />
-          <DashboardStatCard
-            value={(child.ai_tokens_used ?? 0).toLocaleString('id-ID')}
-            label={language === 'id' ? 'Token AI anak ini' : 'AI tokens (this child)'}
-            icon={Sparkles}
-            accent="teal"
-          />
+          {!isParentOnlyViewer && (
+            <DashboardStatCard
+              value={(child.ai_tokens_used ?? 0).toLocaleString('id-ID')}
+              label={language === 'id' ? 'Token AI anak ini' : 'AI tokens (this child)'}
+              icon={Sparkles}
+              accent="teal"
+            />
+          )}
         </div>
 
         <div className="rounded-2xl border border-[#E5E8EB] bg-white px-6 py-5 shadow-sm shadow-[#1A2B4C]/5">
@@ -1086,7 +1275,8 @@ export function ChildDetailPageContent() {
               {language === 'id' ? 'Progres jam mingguan' : 'Weekly hours progress'}
             </span>
             <span className="text-sm font-bold text-[#1A2B4C]">
-              {formatHours(weeklyHoursExecuted)} / {child.monthly_quota}h ({Math.round(quotaPercentage)}%)
+              {humanHours(weeklyHoursExecuted, language)} / {child.monthly_quota}
+              {language === 'id' ? ' jam' : 'h'} ({Math.round(quotaPercentage)}%)
             </span>
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-[#E5E8EB]">
@@ -1096,6 +1286,73 @@ export function ChildDetailPageContent() {
             />
           </div>
         </div>
+
+        {/*
+          Submitting the observation drops the parent here while two AI
+          generations of 60–120s and a human review run behind the page, and
+          nothing said so. Name the three waits in sequence, say roughly how
+          long, and say they can close the app.
+        */}
+        {isGatedViewer && !hasApprovedAbaWeek && hasAssessmentForAba && !aiBlockedReason && (
+          <div className="rounded-2xl border border-[#00C1B2]/25 bg-[#00C1B2]/5 p-5">
+            <h3 className="font-montserrat text-sm font-bold text-[#1A2B4C]">
+              {language === 'id'
+                ? `Sedang menyiapkan program ${child.name}`
+                : `Preparing ${child.name}'s program`}
+            </h3>
+            <ol className="mt-3 space-y-2.5">
+              {([
+                {
+                  done: Boolean(assessmentForLanguage) || assessmentPending,
+                  title:
+                    language === 'id' ? 'Menulis laporan asesmen' : 'Writing the assessment report',
+                  wait: language === 'id' ? 'sekitar 1–2 menit' : 'about 1–2 minutes',
+                },
+                {
+                  done: Boolean(currentWeekRow),
+                  title:
+                    language === 'id'
+                      ? 'Menyusun program rumah mingguan'
+                      : 'Building the weekly home program',
+                  wait: language === 'id' ? 'sekitar 1–2 menit' : 'about 1–2 minutes',
+                },
+                {
+                  done: false,
+                  title:
+                    language === 'id'
+                      ? 'Diperiksa tim klinis Gradion'
+                      : 'Checked by the Gradion clinical team',
+                  wait: language === 'id' ? 'biasanya 1–2 hari kerja' : 'usually 1–2 working days',
+                },
+              ] as const).map((stage, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm">
+                  <span
+                    className={cn(
+                      'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                      stage.done
+                        ? 'bg-[#00736C] text-white'
+                        : 'border border-[#00C1B2]/40 text-[#00736C]',
+                    )}
+                    aria-hidden
+                  >
+                    {stage.done ? '✓' : i + 1}
+                  </span>
+                  <span className={stage.done ? 'text-[#1A2B4C]/55 line-through' : 'text-[#1A2B4C]'}>
+                    {stage.title}
+                    <span className="ml-1.5 text-xs font-normal text-[#1A2B4C]/50">
+                      · {stage.wait}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-xs leading-relaxed text-[#1A2B4C]/65">
+              {language === 'id'
+                ? 'Anda boleh menutup aplikasi — kami kirim email begitu program siap dijalankan.'
+                : 'You can close the app — we will email you as soon as the program is ready to run.'}
+            </p>
+          </div>
+        )}
 
         {(child.environment || (child.parent && user.role !== 'parent')) && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1135,7 +1392,7 @@ export function ChildDetailPageContent() {
                       <p className="text-xs text-[#1A2B4C]/60">{t('aiAssessmentSubtitle')}</p>
                     </div>
                   </div>
-                  {!assessmentForLanguage && !assessmentPending && (
+                  {!assessmentForLanguage && !assessmentPending && aiBlockedReason === null && (
                     <div className="flex items-center gap-2">
                       {language === 'id' && englishAssessment ? (
                         <div className="text-xs font-medium text-[#1A2B4C]/70">
@@ -1155,6 +1412,29 @@ export function ChildDetailPageContent() {
                   )}
                 </div>
 
+                {aiBlockedReason && (
+                  <div className="mt-3 rounded-xl border border-[#FFB900]/40 bg-[#FFB900]/10 px-4 py-3 text-sm text-[#1A2B4C]">
+                    <div className="font-semibold">
+                      {language === 'id'
+                        ? 'Laporan asesmen & program mingguan belum dapat dibuat'
+                        : 'The assessment report and weekly program could not be created yet'}
+                    </div>
+                    <p className="mt-1 text-[#1A2B4C]/80">{aiBlockedReason}</p>
+                    <p className="mt-1 text-[#1A2B4C]/70">
+                      {language === 'id'
+                        ? 'Data observasi awal ananda sudah tersimpan dengan aman. Setelah langganan aktif kembali, laporan dan program akan dibuat otomatis.'
+                        : "Your child's initial observation is saved safely. Once the subscription is active again, the report and program are generated automatically."}
+                    </p>
+                    {user.role === 'parent' && (
+                      <Link href="/dashboard/checkout" className="mt-3 inline-block">
+                        <Button size="sm" variant="brand">
+                          {language === 'id' ? 'Lihat paket langganan' : 'View subscription plans'}
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                )}
+
                 {assessmentError && (
                   <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {assessmentError}
@@ -1171,7 +1451,7 @@ export function ChildDetailPageContent() {
                         {' '}
                         <Link
                           href="/dashboard/admin/ai-content-review"
-                          className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                          className="font-semibold text-[#1A2B4C] underline hover:text-[#00736C]"
                         >
                           {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
                         </Link>
@@ -1214,7 +1494,11 @@ export function ChildDetailPageContent() {
 
             {!hasAssessmentForAba && (
               <div className="rounded-xl border border-[#FFB900]/30 bg-[#FFB900]/10 px-3 py-2 text-sm text-[#1A2B4C]">
-                {t('abaProgramNeedAssessment')}
+                {aiBlockedReason
+                  ? language === 'id'
+                    ? 'Program mingguan dibuat otomatis setelah laporan asesmen tersedia. Lihat keterangan pada bagian Laporan Asesmen di atas.'
+                    : 'The weekly program is generated automatically once the assessment report exists. See the note in the Assessment Report section above.'
+                  : t('abaProgramNeedAssessment')}
               </div>
             )}
 
@@ -1228,7 +1512,7 @@ export function ChildDetailPageContent() {
                     {' '}
                     <Link
                       href="/dashboard/admin/ai-content-review"
-                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00736C]"
                     >
                       {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
                     </Link>
@@ -1237,58 +1521,128 @@ export function ChildDetailPageContent() {
               </div>
             )}
 
+            {/*
+              "Segarkan program ini" and "Buat program baru" used to sit above
+              the parent's own action, the second of them styled as the page's
+              primary — one tap from a tired parent, spending AI tokens and
+              queueing a plan for clinician review. They are maintenance, so
+              they live behind a menu now, and regenerating states its
+              consequence before it runs.
+            */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-[#1A2B4C]/80">
                 <span className="font-semibold text-[#1A2B4C]">
                   {language === 'id' ? 'Periode program' : 'Program period'}:
                 </span>{' '}
-                <span className="font-mono">
+                <span>
                   {currentWeekRow
-                    ? `${currentWeekStartYmd} → ${currentWeekEndYmd}`
-                    : todayYmd}
+                    ? `${humanYmd(currentWeekStartYmd, language)} – ${humanYmd(currentWeekEndYmd, language)}`
+                    : humanYmd(todayYmd, language)}
                 </span>
                 {currentWeekRow && currentWeekExpired && (
                   <span className="ml-2 rounded-full border border-[#FFB900]/40 bg-[#FFB900]/15 px-2 py-0.5 text-xs font-medium text-[#8A6100]">
                     {language === 'id'
-                      ? 'Periode berakhir · masih aktif'
-                      : 'Period ended · still active'}
+                      ? 'Boleh terus dilatih sampai program berikutnya siap'
+                      : 'Keep practising until the next program is ready'}
                   </span>
                 )}
                 {abaLoading && <span className="ml-2 text-xs text-[#1A2B4C]/50">({t('loading')}…)</span>}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {currentWeekRow && (
+              {(currentWeekRow || hasAssessmentForAba) && (
+                <div className="relative">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleGenerateAbaWeek(currentWeekStartYmd as string)}
-                    disabled={abaGenerating || !hasAssessmentForAba}
+                    className="gap-1.5"
+                    aria-expanded={maintenanceMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setMaintenanceMenuOpen((v) => !v)}
+                    disabled={abaGenerating}
                   >
                     {abaGenerating
                       ? t('abaProgramGenerating')
                       : language === 'id'
-                        ? 'Segarkan program ini'
-                        : 'Refresh this program'}
+                        ? 'Pengaturan program'
+                        : 'Program settings'}
+                    <ChevronDown className="h-4 w-4" aria-hidden />
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="brand"
-                  onClick={() => handleGenerateAbaWeek(todayYmd)}
-                  disabled={
-                    abaGenerating ||
-                    !hasAssessmentForAba ||
-                    (Boolean(currentWeekRow) && (!canGenerateNewProgram || newProgramIsSameDay))
-                  }
-                >
-                  {abaGenerating
-                    ? t('abaProgramGenerating')
-                    : language === 'id'
-                      ? 'Buat program baru'
-                      : 'Generate new program'}
-                </Button>
-              </div>
+                  {maintenanceMenuOpen && (
+                    <>
+                      <button
+                        type="button"
+                        aria-hidden
+                        tabIndex={-1}
+                        className="fixed inset-0 z-30 cursor-default"
+                        onClick={() => setMaintenanceMenuOpen(false)}
+                      />
+                      <div
+                        role="menu"
+                        className="absolute right-0 z-40 mt-1 w-72 overflow-hidden rounded-xl border border-[#E5E8EB] bg-white py-1 shadow-lg"
+                      >
+                        {currentWeekRow && (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="block w-full px-4 py-2.5 text-left text-sm text-[#1A2B4C] hover:bg-[#FDF8F1] disabled:opacity-40"
+                            disabled={!hasAssessmentForAba}
+                            onClick={() => {
+                              setMaintenanceMenuOpen(false);
+                              void handleGenerateAbaWeek(currentWeekStartYmd as string);
+                            }}
+                          >
+                            {language === 'id' ? 'Segarkan program ini' : 'Refresh this program'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full px-4 py-2.5 text-left text-sm text-[#1A2B4C] hover:bg-[#FDF8F1] disabled:opacity-40"
+                          disabled={
+                            !hasAssessmentForAba ||
+                            (Boolean(currentWeekRow) && (!canGenerateNewProgram || newProgramIsSameDay))
+                          }
+                          onClick={() => {
+                            setMaintenanceMenuOpen(false);
+                            setConfirmNewProgram(true);
+                          }}
+                        >
+                          {language === 'id' ? 'Buat program baru' : 'Generate new program'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
+
+            {confirmNewProgram && (
+              <div className="rounded-xl border border-[#FFB900]/40 bg-[#FFB900]/10 p-4 text-sm text-[#1A2B4C]">
+                <p className="font-semibold">
+                  {language === 'id' ? 'Buat program baru sekarang?' : 'Generate a new program now?'}
+                </p>
+                <p className="mt-1 leading-relaxed text-[#1A2B4C]/80">
+                  {language === 'id'
+                    ? 'Program yang sekarang akan diganti, dan program baru harus ditinjau tim Gradion dulu sebelum bisa dijalankan. Biasanya butuh 1–2 hari kerja.'
+                    : 'This replaces the current program, and the new one must be reviewed by the Gradion team before it can be used. That usually takes 1–2 working days.'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="brand"
+                    disabled={abaGenerating}
+                    onClick={() => {
+                      setConfirmNewProgram(false);
+                      void handleGenerateAbaWeek(todayYmd);
+                    }}
+                  >
+                    {language === 'id' ? 'Ya, buat program baru' : 'Yes, generate it'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirmNewProgram(false)}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {currentWeekRow &&
               currentWeekRow.generated_by === 'auto_progress_gate' &&
@@ -1303,28 +1657,76 @@ export function ChildDetailPageContent() {
                 </div>
               )}
 
-            {currentWeekRow && progressGate && !progressGate.can_generate_new && !newProgramIsSameDay && (
-              <div className="rounded-xl border border-[#E5E8EB] bg-white px-3 py-2.5 text-xs text-[#1A2B4C]/80">
-                {language === 'id'
-                  ? `Program tahap berikutnya akan dibuat OTOMATIS saat target tercapai: rata-rata skor ≥75% dan setiap program dijalankan minimal 3× — atau, jika rata-rata di bawah 75%, setelah setiap program dijalankan 6× (program lama dibawa lagi dengan tambahan program baru). Saat ini: ${
-                      progressGate.avg_score_pct !== null
-                        ? `rata-rata skor ${progressGate.avg_score_pct}%, `
-                        : ''
-                    }program paling jarang baru dijalankan ${progressGate.min_executions}× dari ${progressGate.required_executions}×.`
-                  : `The next-stage program is generated AUTOMATICALLY once the targets are achieved: average score ≥75% with every program run at least 3 times — or, if the average is below 75%, once every program has been run 6 times (the current programs then carry over with additions). Right now: ${
-                      progressGate.avg_score_pct !== null
-                        ? `average score ${progressGate.avg_score_pct}%, `
-                        : ''
-                    }the least-practiced program has ${progressGate.min_executions} of ${progressGate.required_executions} runs.`}
-                {isAdminViewer && (
-                  <span className="ml-1 text-[#1A2B4C]/50">
+            {/*
+              This used to be four thresholds in sixty words of grey prose,
+              with the child's actual position buried at the end — the parent
+              had to do the subtraction themselves, in the one place they came
+              to find out how it is going. Lead with the answer, name the
+              program that is holding things up, put the rule behind "kenapa?".
+            */}
+            {currentWeekRow && progressGate && !progressGate.can_generate_new && !newProgramIsSameDay && (() => {
+              const remaining = Math.max(
+                0,
+                progressGate.required_executions - progressGate.min_executions,
+              );
+              const blocking =
+                progressGate.per_program
+                  ?.slice()
+                  .sort((a, b) => a.executions - b.executions)[0]?.program_name ?? null;
+              const consolidating =
+                progressGate.avg_score_pct !== null && progressGate.avg_score_pct < 75;
+              return (
+                <div className="rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/5 px-4 py-3 text-sm text-[#1A2B4C]">
+                  <p className="font-montserrat text-xl font-bold">
                     {language === 'id'
-                      ? '(Sebagai admin, Anda tetap bisa membuat program baru.)'
-                      : '(As an admin you can still generate a new program.)'}
-                  </span>
-                )}
-              </div>
-            )}
+                      ? `${remaining} sesi lagi`
+                      : `${remaining} more ${remaining === 1 ? 'session' : 'sessions'}`}
+                  </p>
+                  <p className="mt-1 leading-relaxed text-[#1A2B4C]/80">
+                    {language === 'id'
+                      ? `${blocking ? `${blocking} perlu` : 'Program ini perlu'} ${remaining} sesi lagi. Setelah itu Gradion menyiapkan tahap berikutnya untuk ${child.name} secara otomatis.`
+                      : `${blocking ? `${blocking} needs` : 'This program needs'} ${remaining} more ${remaining === 1 ? 'session' : 'sessions'}. After that Gradion prepares the next stage for ${child.name} automatically.`}
+                  </p>
+                  {consolidating && (
+                    <p className="mt-1 leading-relaxed text-[#1A2B4C]/70">
+                      {language === 'id'
+                        ? `Rata-rata skor saat ini ${progressGate.avg_score_pct}%, jadi tahap berikutnya akan memantapkan program yang sekarang sambil menambah yang baru — bukan mengulang dari awal.`
+                        : `The average score is ${progressGate.avg_score_pct}%, so the next stage will consolidate the current programs and add to them — it is not a restart.`}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowGateRule((v) => !v)}
+                    className="mt-1 inline-flex min-h-[44px] items-center rounded px-1 text-xs font-semibold text-[#00736C] underline underline-offset-2 hover:text-[#005E58] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
+                    aria-expanded={showGateRule}
+                  >
+                    {language === 'id' ? 'Kenapa segitu?' : 'Why that many?'}
+                  </button>
+                  {showGateRule && (
+                    <p className="mt-2 text-xs leading-relaxed text-[#1A2B4C]/65">
+                      {language === 'id'
+                        ? `Tahap berikutnya dibuat otomatis saat rata-rata skor ≥75% dan setiap program sudah dijalankan minimal 3×. Kalau rata-rata masih di bawah 75%, tahap berikutnya dibuat setelah setiap program dijalankan 6×, dan program lama dibawa lagi. Saat ini${
+                            progressGate.avg_score_pct !== null
+                              ? ` rata-rata skor ${progressGate.avg_score_pct}%,`
+                              : ''
+                          } program paling jarang baru ${progressGate.min_executions}× dari ${progressGate.required_executions}×.`
+                        : `The next stage is generated automatically once the average score is 75% or more and every program has been run at least 3 times. If the average is still below 75%, it is generated once every program has been run 6 times, carrying the current programs over. Right now${
+                            progressGate.avg_score_pct !== null
+                              ? ` the average score is ${progressGate.avg_score_pct}%,`
+                              : ''
+                          } and the least-practised program has ${progressGate.min_executions} of ${progressGate.required_executions} runs.`}
+                      {isAdminViewer && (
+                        <span className="ml-1 text-[#1A2B4C]/50">
+                          {language === 'id'
+                            ? '(Sebagai admin, Anda tetap bisa membuat program baru.)'
+                            : '(As an admin you can still generate a new program.)'}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {currentWeekRow?.mainstream_goal_met && (
               <div className="rounded-xl border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-3 py-2 text-sm text-[#1A2B4C]">
@@ -1346,7 +1748,7 @@ export function ChildDetailPageContent() {
                     {' '}
                     <Link
                       href="/dashboard/admin/ai-content-review"
-                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00A896]"
+                      className="font-semibold text-[#1A2B4C] underline hover:text-[#00736C]"
                     >
                       {language === 'id' ? 'Tinjau sekarang →' : 'Review it now →'}
                     </Link>
@@ -1357,16 +1759,47 @@ export function ChildDetailPageContent() {
 
             {currentWeekRow && !(isGatedViewer && currentWeekRow.review_status !== 'approved') && (
               <div className="space-y-3 rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/30 p-4">
+                {/* A monospace `active` state chip told the parent nothing they could act on. */}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm font-semibold text-[#1A2B4C]">
-                    {t('status')}:{' '}
-                    <span className="rounded-full border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-2 py-0.5 font-mono text-xs text-[#00A896]">
-                      {currentWeekRow.status}
-                    </span>
+                  {isParentOnlyViewer ? (
+                    <span />
+                  ) : (
+                    <div className="text-sm font-semibold text-[#1A2B4C]">
+                      {t('status')}:{' '}
+                      <span className="rounded-full border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-2 py-0.5 font-mono text-xs text-[#00736C]">
+                        {currentWeekRow.status}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex flex-col items-stretch gap-1.5 sm:items-end">
+                    {/* The most likely session is the interrupted one. Offer it back. */}
+                    {resumableSession ? (
+                      <Button
+                        size="sm"
+                        variant="brand"
+                        onClick={() =>
+                          router.push(
+                            `/dashboard/children/${child.id}/aba-program?weekId=${currentWeekRow.id}&sessionId=${resumableSession.session.id}`,
+                          )
+                        }
+                      >
+                        {language === 'id'
+                          ? `Lanjutkan sesi — ${resumableSession.label}`
+                          : `Resume session — ${resumableSession.label}`}
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="brand" onClick={() => openAbaStartModal(currentWeekRow)}>
+                        {language === 'id' ? 'Mulai latihan hari ini' : "Start today's practice"}
+                      </Button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openAbaPrintFlow(currentWeekRow)}
+                      className="inline-flex min-h-[44px] items-center justify-center rounded px-2 text-xs font-medium text-[#1A2B4C]/60 underline underline-offset-2 hover:text-[#00736C] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
+                    >
+                      {language === 'id' ? 'Pakai lembar cetak' : 'Use the printed sheet'}
+                    </button>
                   </div>
-                  <Button size="sm" variant="brand" onClick={() => openAbaStartModal(currentWeekRow)}>
-                    {t('abaProgramStart')}
-                  </Button>
                 </div>
 
                 {Array.isArray((currentWeekRow.plan_json as any)?.programs) && (
@@ -1410,6 +1843,8 @@ export function ChildDetailPageContent() {
                           );
                           const executed = prog ? prog.executions : counts.get(pid) || 0;
                           const scorePct = prog?.score_pct ?? null;
+                          const requiredRuns = progressGate?.required_executions ?? 6;
+                          const remainingRuns = Math.max(0, requiredRuns - executed);
                           const demoUrl =
                             typeof p.demo_video_url === 'string' && p.demo_video_url.trim()
                               ? p.demo_video_url.trim()
@@ -1429,18 +1864,26 @@ export function ChildDetailPageContent() {
                                     <div className="mt-0.5 text-xs text-[#1A2B4C]/60">{p.domain}</div>
                                   )}
                                 </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <div className="text-xs font-medium text-[#00A896]">
-                                    {language === 'id' ? 'Dijalankan' : 'Runs'}: {executed}×
-                                    {scorePct !== null && (
-                                      <span
-                                        className={
-                                          scorePct >= 75 ? 'ml-1.5 text-[#00A896]' : 'ml-1.5 text-[#8A6100]'
-                                        }
-                                      >
-                                        · {language === 'id' ? 'skor' : 'score'} {scorePct}%
-                                      </span>
-                                    )}
+                                {/*
+                                  "Sesi" and "Sisa", so the parent can see which
+                                  program is holding the child back without doing
+                                  the subtraction. The score sits inside, where
+                                  someone who wants it will look.
+                                */}
+                                <div className="flex shrink-0 items-center gap-3">
+                                  <div className="text-right">
+                                    <div className="text-xs text-[#1A2B4C]/55">
+                                      {executed} {language === 'id' ? 'dari' : 'of'} {requiredRuns}
+                                    </div>
+                                    <div className="text-xs font-bold text-[#1A2B4C]">
+                                      {remainingRuns > 0
+                                        ? language === 'id'
+                                          ? `${remainingRuns} sesi lagi`
+                                          : `${remainingRuns} to go`
+                                        : language === 'id'
+                                          ? 'Target tercapai'
+                                          : 'Target met'}
+                                    </div>
                                   </div>
                                   <span className="text-sm text-[#1A2B4C]/40" aria-hidden>
                                     {expanded ? '▾' : '▸'}
@@ -1449,6 +1892,16 @@ export function ChildDetailPageContent() {
                               </button>
                               {expanded && (
                                 <div className="space-y-3 border-t border-[#E5E8EB] px-3 pb-3 text-sm text-[#1A2B4C]/80">
+                                  {scorePct !== null && (
+                                    <div className="pt-2 text-xs">
+                                      <span className="font-semibold text-[#1A2B4C]">
+                                        {language === 'id' ? 'Skor' : 'Score'}
+                                      </span>{' '}
+                                      <span className={scorePct >= 75 ? 'text-[#00736C]' : 'text-[#8A6100]'}>
+                                        {scorePct}% {language === 'id' ? 'mandiri' : 'independent'}
+                                      </span>
+                                    </div>
+                                  )}
                                   {p.rationale && (
                                     <div className="pt-2 text-xs">{p.rationale}</div>
                                   )}
@@ -1509,7 +1962,7 @@ export function ChildDetailPageContent() {
                                         href={demoUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="break-all text-[#00A896] underline hover:text-[#00C1B2]"
+                                        className="break-all text-[#00736C] underline hover:text-[#005E58]"
                                       >
                                         {demoUrl}
                                       </a>
@@ -1619,8 +2072,10 @@ export function ChildDetailPageContent() {
             <div className="w-full max-w-lg rounded-2xl border border-[#E5E8EB] bg-white p-6 shadow-xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-montserrat text-lg font-bold text-[#1A2B4C]">{t('abaProgramStart')}</h3>
-                  <p className="mt-1 text-sm text-[#1A2B4C]/60">{t('abaProgramChooseMode')}</p>
+                  <h3 className="font-montserrat text-lg font-bold text-[#1A2B4C]">
+                    {t('abaProgramModeUpload')}
+                  </h3>
+                  <p className="mt-1 text-sm text-[#1A2B4C]/60">{t('abaProgramModeUploadHint')}</p>
                 </div>
                 <button
                   type="button"
@@ -1631,29 +2086,32 @@ export function ChildDetailPageContent() {
                 </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleChooseAbaMode('guided')}
-                  className="rounded-xl border border-[#E5E8EB] p-4 text-left transition-colors hover:border-[#00C1B2]/30 hover:bg-[#00C1B2]/5"
-                >
-                  <div className="text-sm font-semibold text-[#1A2B4C]">{t('abaProgramModeGuided')}</div>
-                  <div className="mt-1 text-xs text-[#1A2B4C]/60">{t('abaProgramModeGuidedHint')}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleChooseAbaMode('upload')}
-                  className="rounded-xl border border-[#E5E8EB] p-4 text-left transition-colors hover:border-[#00C1B2]/30 hover:bg-[#00C1B2]/5"
-                >
-                  <div className="text-sm font-semibold text-[#1A2B4C]">{t('abaProgramModeUpload')}</div>
-                  <div className="mt-1 text-xs text-[#1A2B4C]/60">{t('abaProgramModeUploadHint')}</div>
-                </button>
-              </div>
+              {abaError && (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {abaError}
+                </div>
+              )}
+
+              {/* Switching back: guided becomes the default again next time. */}
+              <button
+                type="button"
+                onClick={() => {
+                  const week = abaActiveWeek;
+                  const pid = abaStartProgramId;
+                  resetAbaModal();
+                  if (week) void handleChooseAbaMode('guided', week, pid);
+                }}
+                className="mt-4 rounded text-xs font-medium text-[#00736C] underline underline-offset-2 hover:text-[#005E58] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
+              >
+                {language === 'id'
+                  ? '← Pakai panduan di website saja'
+                  : '← Use the guided session instead'}
+              </button>
 
               {abaChosenMode === 'upload' && abaSessionId && (
                 <div className="mt-4 space-y-3 rounded-xl border border-[#00C1B2]/20 bg-[#00C1B2]/5 p-4">
                   <a
-                    className="text-sm font-medium text-[#00A896] underline hover:text-[#00C1B2]"
+                    className="text-sm font-medium text-[#00736C] underline hover:text-[#005E58]"
                     href="/therapy-notes-mr-andrew.pdf"
                     target="_blank"
                     rel="noreferrer"
@@ -1675,7 +2133,7 @@ export function ChildDetailPageContent() {
                       }}
                     />
                     {abaUploading && (
-                      <div className="mt-2 text-xs text-[#00A896]">{t('abaProgramUploading')}</div>
+                      <div className="mt-2 text-xs text-[#00736C]">{t('abaProgramUploading')}</div>
                     )}
                   </div>
                 </div>
@@ -1741,7 +2199,7 @@ export function ChildDetailPageContent() {
                         <ActivityLogEntryBody log={log} language={language} />
                         {log.therapist_comment && (
                           <div className="mt-2 rounded-lg border border-[#00C1B2]/20 bg-[#00C1B2]/5 p-2">
-                            <p className="text-xs font-medium text-[#00A896]">Review Comment:</p>
+                            <p className="text-xs font-medium text-[#00736C]">Review Comment:</p>
                             <p className="text-sm text-[#1A2B4C]/80">{log.therapist_comment}</p>
                           </div>
                         )}

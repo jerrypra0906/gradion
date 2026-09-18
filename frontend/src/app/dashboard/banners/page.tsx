@@ -120,7 +120,7 @@ export default function BannersPage() {
                             navigator.clipboard.writeText(banner.id.toString());
                             alert('Banner ID copied to clipboard!');
                           }}
-                          className="text-xs text-purple-600 hover:text-purple-800 underline"
+                          className="inline-flex min-h-[24px] items-center rounded px-1 text-xs text-purple-700 underline hover:text-purple-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
                           title="Copy Banner ID"
                         >
                           Copy

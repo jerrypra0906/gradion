@@ -101,7 +101,7 @@ function AbaProgramResultCard({
             <p className="text-xs font-medium text-[#1A2B4C]/55">
               {language === 'id' ? 'Akurasi mandiri' : 'Independent accuracy'}
             </p>
-            <p className="text-sm font-bold text-[#00A896]">
+            <p className="text-sm font-bold text-[#00736C]">
               {stats.independent}/{stats.total}
             </p>
           </div>
@@ -113,11 +113,11 @@ function AbaProgramResultCard({
           <AccuracyBar pct={stats.accuracyPct} />
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#1A2B4C]/55">
             <span>
-              <span className="font-semibold text-[#00A896]">+</span> {stats.independent}{' '}
+              <span className="font-semibold text-[#00736C]">+</span> {stats.independent}{' '}
               {language === 'id' ? 'mandiri' : 'independent'}
             </span>
             <span>
-              <span className="font-semibold text-[#B8860B]">p</span> {stats.prompted}{' '}
+              <span className="font-semibold text-[#8A6100]">p</span> {stats.prompted}{' '}
               {language === 'id' ? 'dibantu' : 'prompted'}
             </span>
             <span>
@@ -147,7 +147,7 @@ function ManualSkillsList({
       {skills.map((skill, idx) => (
         <span
           key={idx}
-          className="rounded-full border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-2.5 py-0.5 text-xs font-medium text-[#00A896]"
+          className="rounded-full border border-[#00C1B2]/25 bg-[#00C1B2]/10 px-2.5 py-0.5 text-xs font-medium text-[#00736C]"
         >
           {skill.name} ({skill.rating}/5)
         </span>

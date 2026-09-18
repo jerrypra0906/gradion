@@ -160,7 +160,7 @@ export function LogsPageContent() {
                         {log.child && (
                           <Link
                             href={`/dashboard/children/${log.child.id}`}
-                            className="font-montserrat text-lg font-bold text-[#1A2B4C] hover:text-[#00A896] transition-colors"
+                            className="font-montserrat text-lg font-bold text-[#1A2B4C] hover:text-[#00736C] transition-colors"
                           >
                             {log.child.name}
                           </Link>
@@ -216,7 +216,7 @@ export function LogsPageContent() {
                       {log.rating && !log.aba_session_id && (
                         <p className="mt-3 text-sm font-semibold text-[#1A2B4C]">
                           Overall Rating:{' '}
-                          <span className="text-[#00C1B2]">{log.rating}/5</span>
+                          <span className="text-[#00736C]">{log.rating}/5</span>
                         </p>
                       )}
 

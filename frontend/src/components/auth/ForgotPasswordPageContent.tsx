@@ -73,7 +73,7 @@ export function ForgotPasswordPageContent() {
 
         <p className="text-center text-sm text-gradion-navy/55">
           Ingat kata sandi Anda?{' '}
-          <Link href="/login" className="font-medium text-gradion-teal hover:text-gradion-teal-hover">
+          <Link href="/login" className="font-medium text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover">
             Kembali ke masuk
           </Link>
         </p>

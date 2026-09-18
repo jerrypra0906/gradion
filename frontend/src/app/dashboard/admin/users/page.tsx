@@ -241,7 +241,7 @@ export default function AdminUsersPage() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-400">No subscription</span>
+                            <span className="text-sm text-gray-600">No subscription</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -277,7 +277,7 @@ export default function AdminUsersPage() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-400">-</span>
+                            <span className="text-sm text-gray-600">-</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -313,7 +313,7 @@ export default function AdminUsersPage() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-400">-</span>
+                            <span className="text-sm text-gray-600">-</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">

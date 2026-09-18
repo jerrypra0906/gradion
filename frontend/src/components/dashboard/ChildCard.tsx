@@ -9,6 +9,12 @@ interface ChildCardProps {
   diagnosisLabel: string;
   /** Label for the per-child AI token usage row. */
   tokenLabel: string;
+  /**
+   * AI token metering is billing data for staff. A parent can neither read nor
+   * act on it, so it stays out of the parent's view — same rule as the child
+   * page, where the token stat card was removed.
+   */
+  showTokens: boolean;
   /** AI tokens consumed by THIS child (from the usage ledger). */
   tokenUsed: number;
   /** The owner wallet's monthly limit; pass 0 to hide the share bar. */
@@ -36,6 +42,7 @@ export function ChildCard({
   ageLabel,
   diagnosisLabel,
   tokenLabel,
+  showTokens,
   tokenUsed,
   tokenLimit,
   parentLabel,
@@ -51,13 +58,13 @@ export function ChildCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-4">
           <div
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#00C1B2]/10 font-montserrat text-lg font-bold text-[#00A896]"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#00C1B2]/10 font-montserrat text-lg font-bold text-[#00736C]"
             aria-hidden
           >
             {initial}
           </div>
           <div className="min-w-0">
-            <h3 className="truncate font-montserrat text-lg font-bold text-[#1A2B4C] transition-colors group-hover:text-[#00A896]">
+            <h3 className="truncate font-montserrat text-lg font-bold text-[#1A2B4C] transition-colors group-hover:text-[#00736C]">
               {child.name}
             </h3>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -73,19 +80,19 @@ export function ChildCard({
             </div>
             {parentLabel && (
               <div className="mt-1.5 flex items-center gap-1.5 text-xs text-[#1A2B4C]/60">
-                <User className="h-3.5 w-3.5 shrink-0 text-[#00A896]" aria-hidden />
+                <User className="h-3.5 w-3.5 shrink-0 text-[#00736C]" aria-hidden />
                 <span className="truncate">{parentLabel}</span>
               </div>
             )}
           </div>
         </div>
         <ChevronRight
-          className="mt-1 h-5 w-5 shrink-0 text-[#1A2B4C]/25 transition-colors group-hover:text-[#00C1B2]"
+          className="mt-1 h-5 w-5 shrink-0 text-[#1A2B4C]/25 transition-colors group-hover:text-[#005E58]"
           aria-hidden
         />
       </div>
 
-      <div className="mt-5">
+      <div className={cn('mt-5', !showTokens && 'hidden')}>
         <div className="mb-2 flex items-center justify-between text-sm">
           <span className="font-medium text-[#1A2B4C]/70">{tokenLabel}</span>
           <span className="font-semibold text-[#1A2B4C]">

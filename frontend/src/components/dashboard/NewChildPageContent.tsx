@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserPlus } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -15,7 +15,8 @@ import {
   createEmptyObsFromTemplate,
   defaultInitialObservationTemplate,
   ensureTemplateShape,
-  missingRequiredFieldsForTemplate,
+  missingRequiredFieldKeysForTemplate,
+  observationFieldDomId,
 } from '@/lib/initialObservationTemplate';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
@@ -24,9 +25,10 @@ import { Textarea } from '@/components/ui/Textarea';
 import { useTranslation } from '@/hooks/useTranslation';
 import { cn } from '@/lib/utils';
 
-// v2: F/S sliders default to 0 — older drafts stored blank slider values and
-// would resurrect the "filled-looking but empty" state, so they are ignored.
-const DRAFT_VERSION = 'v2';
+// v3: sliders replaced by anchored plain-language choices and nothing is
+// pre-selected, so v2 drafts (whose F/S defaulted to "0") would resurrect a
+// guessed "never" as a real answer. Old drafts are ignored.
+const DRAFT_VERSION = 'v3';
 
 type ChildDraft = {
   step: 1 | 2;
@@ -75,14 +77,27 @@ export function NewChildPageContent() {
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
+  /** Gaps stay unmarked until the parent has actually tried to submit. */
+  const [showMissing, setShowMissing] = useState(false);
+  const skipErrorScrollRef = useRef(false);
 
   // The submit button sits at the bottom of a long checklist; bring the
   // validation message into view so the parent immediately sees what's missing.
   useEffect(() => {
-    if (error) {
-      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!error) return;
+    // When a specific field is being focused instead, don't fight it.
+    if (skipErrorScrollRef.current) {
+      skipErrorScrollRef.current = false;
+      return;
     }
+    errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [error]);
+
+  // Recomputed live, so a gap clears its mark as soon as the parent fills it.
+  const missingKeysByObs = useMemo(
+    () => observations.map((obs) => new Set(missingRequiredFieldKeysForTemplate(template, obs))),
+    [observations, template],
+  );
 
   const draftKey = user ? `gradion-child-draft-${DRAFT_VERSION}:${user.id}` : null;
   const [hydrated, setHydrated] = useState(false);
@@ -235,21 +250,30 @@ export function NewChildPageContent() {
       return;
     }
 
-    // Point the parent at exactly which mandatory fields are still missing,
-    // instead of silently disabling the button.
+    // Missing fields are marked where they are and the first gap is focused.
+    // Naming all sixteen in one red paragraph was a screen of red text on a
+    // phone, after which the parent still had to hunt each field down by name.
     const lang: 'en' | 'id' = language === 'id' ? 'id' : 'en';
     const missingByObs = observations
-      .map((obs, idx) => ({ idx, missing: missingRequiredFieldsForTemplate(template, obs, lang) }))
+      .map((obs, idx) => ({ idx, missing: missingRequiredFieldKeysForTemplate(template, obs) }))
       .filter((entry) => entry.missing.length > 0);
     if (missingByObs.length > 0) {
-      const details = missingByObs
-        .map((entry) => `OBS ${entry.idx + 1}: ${entry.missing.join(', ')}`)
-        .join(' — ');
+      setShowMissing(true);
+      skipErrorScrollRef.current = true;
+      const first = missingByObs[0];
+      const total = missingByObs.reduce((sum, e) => sum + e.missing.length, 0);
       setError(
         lang === 'id'
-          ? `Mohon lengkapi kolom wajib berikut terlebih dahulu untuk melanjutkan. ${details}`
-          : `Please fill in the following mandatory fields first to proceed. ${details}`,
+          ? `Masih ada ${total} kolom wajib yang belum diisi. Kami bawa Anda ke yang pertama.`
+          : `${total} mandatory ${total === 1 ? 'field is' : 'fields are'} still empty. Taking you to the first one.`,
       );
+      setActiveObsIndex(first.idx);
+      // Let the tab switch render before scrolling to the field inside it.
+      window.setTimeout(() => {
+        const el = document.getElementById(observationFieldDomId(first.idx, first.missing[0]));
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (el as HTMLElement | null)?.focus?.({ preventScroll: true });
+      }, 80);
       return;
     }
 
@@ -304,7 +328,7 @@ export function NewChildPageContent() {
                   key={s}
                   className={cn(
                     'rounded-full px-4 py-1.5 text-xs font-semibold transition-colors',
-                    step === s ? 'bg-[#00C1B2] text-white' : 'text-white/60',
+                    step === s ? 'bg-[#00C1B2] text-[#06302D]' : 'text-white/60',
                   )}
                 >
                   {language === 'id' ? `Langkah ${s}` : `Step ${s}`}
@@ -337,7 +361,7 @@ export function NewChildPageContent() {
             <button
               type="button"
               onClick={handleDiscardDraft}
-              className="shrink-0 font-semibold text-[#00A896] hover:text-[#00C1B2] transition-colors"
+              className="shrink-0 font-semibold text-[#00736C] hover:text-[#005E58] transition-colors"
             >
               {language === 'id' ? 'Mulai dari awal' : 'Start over'}
             </button>
@@ -370,7 +394,7 @@ export function NewChildPageContent() {
             {step === 1 ? (
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <p className="sm:col-span-2 -mb-1 text-xs text-[#1A2B4C]/60">
-                  <span className="font-semibold text-red-500">*</span>{' '}
+                  <span className="font-semibold text-red-600">*</span>{' '}
                   {language === 'id'
                     ? 'wajib diisi · kolom lain bertanda (Opsional)'
                     : 'mandatory · other fields are marked (Optional)'}
@@ -381,7 +405,7 @@ export function NewChildPageContent() {
                     label={
                       <>
                         {t('childName')}
-                        <span className="ml-0.5 font-semibold text-red-500">*</span>
+                        <span className="ml-0.5 font-semibold text-red-600">*</span>
                       </>
                     }
                     type="text"
@@ -413,7 +437,7 @@ export function NewChildPageContent() {
                     label={
                       <>
                         {t('weeklyHoursTarget')}
-                        <span className="ml-0.5 font-semibold text-red-500">*</span>
+                        <span className="ml-0.5 font-semibold text-red-600">*</span>
                       </>
                     }
                     type="number"
@@ -459,13 +483,16 @@ export function NewChildPageContent() {
                   </div>
                   <ul className="list-disc space-y-1.5 pl-5">
                     <li>
-                      <strong>Frekuensi</strong>: {t('checklistHowToFrequency')}
+                      <strong>{language === 'id' ? 'Seberapa sering' : 'How often'}</strong>:{' '}
+                      {t('checklistHowToFrequency')}
                     </li>
                     <li>
-                      <strong>Severity</strong>: {t('checklistHowToSeverity')}
+                      <strong>{language === 'id' ? 'Seberapa berat' : 'How hard'}</strong>:{' '}
+                      {t('checklistHowToSeverity')}
                     </li>
                     <li>
-                      <strong>%</strong>: {t('checklistHowToPercent')}
+                      <strong>{language === 'id' ? 'Kontak mata & kepatuhan' : 'Eye contact & compliance'}</strong>:{' '}
+                      {t('checklistHowToPercent')}
                     </li>
                     <li>
                       <strong>{t('attentionSpan')}</strong>: {t('checklistHowToAttention')}
@@ -481,13 +508,25 @@ export function NewChildPageContent() {
                         type="button"
                         onClick={() => setActiveObsIndex(idx)}
                         className={cn(
-                          'rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/40',
+                          'min-h-[44px] rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-[#00C1B2]/40',
                           idx === activeObsIndex
-                            ? 'border-[#00C1B2] bg-[#00C1B2] text-white shadow-md shadow-[#00C1B2]/20'
+                            ? 'border-[#00C1B2] bg-[#00736C] text-white shadow-md shadow-[#00736C]/20'
                             : 'border-[#E5E8EB] bg-white text-[#1A2B4C]/70 hover:border-[#00C1B2]/30',
                         )}
                       >
                         OBS {idx + 1}
+                        {showMissing && missingKeysByObs[idx]?.size > 0 && (
+                          <span
+                            className={cn(
+                              'ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] font-bold',
+                              idx === activeObsIndex
+                                ? 'bg-white/25 text-white'
+                                : 'bg-red-100 text-red-700',
+                            )}
+                          >
+                            {missingKeysByObs[idx].size}
+                          </span>
+                        )}
                       </button>
                     ))}
                     {observations.length < 4 && (
@@ -495,6 +534,7 @@ export function NewChildPageContent() {
                         type="button"
                         size="sm"
                         variant="outline"
+                        className="min-h-[44px]"
                         onClick={() => {
                           setObservations((p) => [...p, createEmptyObsFromTemplate(template)]);
                           setActiveObsIndex(observations.length);
@@ -518,21 +558,31 @@ export function NewChildPageContent() {
                       );
                     }}
                     obsIndex={activeObsIndex}
+                    missingKeys={showMissing ? missingKeysByObs[activeObsIndex] : undefined}
                   />
                 )}
               </>
             )}
 
             <div className="flex flex-col gap-4 border-t border-[#E5E8EB] pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-[#1A2B4C]/50">
-                {draftSavedAt
-                  ? language === 'id'
-                    ? `Draf disimpan otomatis ${new Date(draftSavedAt).toLocaleTimeString()}`
-                    : `Draft auto-saved at ${new Date(draftSavedAt).toLocaleTimeString()}`
-                  : language === 'id'
-                    ? 'Perubahan disimpan otomatis sebagai draf.'
-                    : 'Changes are auto-saved as a draft.'}
-              </p>
+              <div className="text-xs text-[#1A2B4C]/50">
+                <p>
+                  {draftSavedAt
+                    ? language === 'id'
+                      ? `Tersimpan otomatis ${new Date(draftSavedAt).toLocaleTimeString()}`
+                      : `Auto-saved at ${new Date(draftSavedAt).toLocaleTimeString()}`
+                    : language === 'id'
+                      ? 'Perubahan disimpan otomatis sebagai draf.'
+                      : 'Changes are auto-saved as a draft.'}
+                </p>
+                {step === 2 && (
+                  <p className="mt-1">
+                    {language === 'id'
+                      ? 'Belum yakin? Lewati dulu — kamu bisa isi nanti.'
+                      : 'Not sure? Skip it — you can fill it in later.'}
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap justify-end gap-3">
                 <Button
                   type="button"

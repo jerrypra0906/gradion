@@ -133,7 +133,7 @@ export function MarkdownRichEditor({
             <AssessmentReportView markdown={value} />
           </div>
         ) : (
-          <div className="text-xs text-gray-400">—</div>
+          <div className="text-xs text-gray-600">—</div>
         )}
       </div>
     </div>

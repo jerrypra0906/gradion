@@ -221,7 +221,7 @@ export default function AdminAutismCasesPage() {
                         {r.child ? ` · Child #${r.child.id}` : ''}
                       </div>
                     </div>
-                    <span className="text-gray-400 text-sm shrink-0" aria-hidden>
+                    <span className="text-gray-600 text-sm shrink-0" aria-hidden>
                       {expanded ? '▾' : '▸'}
                     </span>
                   </button>

@@ -154,7 +154,7 @@ export default function QuotaManagementPage() {
                               <div className="text-sm text-gray-500">{child.parent.email}</div>
                             </div>
                           ) : (
-                            <span className="text-sm text-gray-400">-</span>
+                            <span className="text-sm text-gray-600">-</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -180,7 +180,7 @@ export default function QuotaManagementPage() {
                                 ? 'text-red-600'
                                 : child.monthly_quota - child.used_sessions <= 2
                                 ? 'text-yellow-600'
-                                : 'text-green-600'
+                                : 'text-green-700'
                             }`}
                           >
                             {Math.max(0, child.monthly_quota - child.used_sessions)}

@@ -83,7 +83,7 @@ export function LoginPageContent() {
       subtitle={
         <>
           Belum punya akun?{' '}
-          <Link href="/register" className="font-semibold text-gradion-teal hover:text-gradion-teal-hover">
+          <Link href="/register" className="font-semibold text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover">
             Daftar gratis
           </Link>
         </>
@@ -114,7 +114,7 @@ export function LoginPageContent() {
           <div className="flex justify-end">
             <Link
               href="/forgot-password"
-              className="text-sm font-medium text-gradion-teal hover:text-gradion-teal-hover"
+              className="text-sm font-medium text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover"
             >
               Lupa kata sandi?
             </Link>
@@ -142,7 +142,7 @@ export function LoginPageContent() {
             onClick={handleBiometricLogin}
             disabled={biometricLoading || loading}
           >
-            <Fingerprint className="h-5 w-5 text-gradion-teal" aria-hidden />
+            <Fingerprint className="h-5 w-5 text-gradion-teal-strong" aria-hidden />
             {biometricLoading ? 'Memindai…' : 'Masuk dengan biometrik'}
           </Button>
         )}
@@ -151,7 +151,7 @@ export function LoginPageContent() {
 
         <p className="text-center text-sm text-gradion-navy/55">
           Belum menerima email verifikasi?{' '}
-          <Link href="/verify-email" className="font-medium text-gradion-teal hover:text-gradion-teal-hover">
+          <Link href="/verify-email" className="font-medium text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover">
             Kirim ulang
           </Link>
         </p>

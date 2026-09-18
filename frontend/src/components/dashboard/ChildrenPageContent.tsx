@@ -338,6 +338,7 @@ export function ChildrenPageContent() {
                     ageLabel={formatChildAge(child.birthdate, t('age'), t('nA'), t('years'))}
                     diagnosisLabel={t('noDiagnosis')}
                     tokenLabel={perChildTokenLabel}
+                    showTokens={!isParentView}
                     tokenUsed={child.ai_tokens_used ?? 0}
                     tokenLimit={isParentView ? tokenLimit : 0}
                     parentLabel={

@@ -318,7 +318,7 @@ function NewLogPageContent() {
                       <span className="font-medium text-gray-900">{skill.name}</span>
                       <button
                         type="button"
-                        className="text-sm text-red-500 hover:text-red-700"
+                        className="text-sm text-red-600 hover:text-red-700"
                         onClick={() => toggleSkill(skill.name)}
                       >
                         Remove

@@ -428,7 +428,7 @@ export default function UserDetailPage() {
                     key={child.id}
                     type="button"
                     onClick={() => router.push(`/dashboard/children/${child.id}`)}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800 transition-colors hover:border-[#00C1B2] hover:text-[#00A896]"
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800 transition-colors hover:border-[#00C1B2] hover:text-[#00736C]"
                     title="Open child page"
                   >
                     {child.name}
@@ -483,7 +483,7 @@ export default function UserDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date <span className="text-red-500">*</span>
+                  End Date <span className="text-red-600">*</span>
                 </label>
                 <Input
                   type="date"

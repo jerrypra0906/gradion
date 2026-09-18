@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { apiClient, ApiResponse, LearningModuleProgress } from '@/lib/api';
-import { learningModules } from '@/lib/modules';
+import { learningModules, moduleLengthLabel, prerequisiteModule } from '@/lib/modules';
 import { Button } from '@/components/ui/Button';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -112,6 +112,10 @@ export default function ModulesPage() {
                           ? 'Terkunci'
                           : 'Locked'}
                       </div>
+                      {/* Length stated up front, so the parent knows what they are committing to. */}
+                      <div className="mt-1.5 text-xs text-gray-500">
+                        {moduleLengthLabel(m, language)}
+                      </div>
                     </div>
                   </div>
 
@@ -125,9 +129,15 @@ export default function ModulesPage() {
                         ? language === 'id'
                           ? 'Langkah berikut: tonton & kerjakan kuis.'
                           : 'Next step: watch & quiz.'
-                        : language === 'id'
-                        ? 'Selesaikan modul sebelumnya.'
-                        : 'Finish previous module.'}
+                        : // A lock that names its own condition is information; one that
+                          // leaves the parent to infer it is a wall.
+                          (() => {
+                            const prev = prerequisiteModule(m);
+                            const name = prev ? prev.title[language] : '';
+                            return language === 'id'
+                              ? `Terbuka setelah "${name}" selesai (video + kuis).`
+                              : `Unlocks once "${name}" is complete (video + quiz).`;
+                          })()}
                     </div>
                     {unlocked ? (
                       <Link href={`/dashboard/modules/${m.key}`}>

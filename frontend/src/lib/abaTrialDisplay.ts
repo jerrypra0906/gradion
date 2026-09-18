@@ -60,9 +60,9 @@ export function parseTrialTokens(trialData?: string): TrialToken[] {
 export function trialTokenClass(token: TrialToken): string {
   switch (token) {
     case '+':
-      return 'bg-[#00C1B2]/15 text-[#00A896] border-[#00C1B2]/30';
+      return 'bg-[#00C1B2]/15 text-[#00736C] border-[#00C1B2]/30';
     case 'p':
-      return 'bg-[#FFB900]/15 text-[#B8860B] border-[#FFB900]/35';
+      return 'bg-[#FFB900]/15 text-[#8A6100] border-[#FFB900]/35';
     case '-':
       return 'bg-red-50 text-red-700 border-red-200';
     default:

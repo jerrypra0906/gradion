@@ -88,17 +88,21 @@ export function BannerStrip({ audience }: BannerStripProps) {
           <p className="text-sm sm:text-base text-white leading-relaxed whitespace-pre-line drop-shadow-md">{active.content}</p>
         </div>
           {banners.length > 1 && (
-            <div className="flex gap-2 sm:ml-4">
+            <div className="-my-2 flex items-center sm:ml-4">
               {banners.map((_, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => setActiveIndex(idx)}
-                  className={`w-3 h-3 rounded-full transition-all shadow-lg ${
-                    idx === activeIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/60'
-                  }`}
+                  className="flex h-11 w-8 items-center justify-center"
                   aria-label={`Go to banner ${idx + 1}`}
-                />
+                >
+                  <span
+                    className={`h-3 w-3 rounded-full shadow-lg transition-all ${
+                      idx === activeIndex ? 'bg-white' : 'bg-white/40 hover:bg-white/60'
+                    }`}
+                  />
+                </button>
               ))}
             </div>
           )}

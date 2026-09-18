@@ -1,40 +1,55 @@
+/**
+ * Badge palettes.
+ *
+ * These chips render on both the navy page header and white cards, so their
+ * backgrounds are opaque rather than a tint of the surface behind them: a
+ * `bg-[#00C1B2]/10` chip composites to near-white on a card and to near-navy on
+ * the header, and one text colour cannot be readable on both. Solid tints keep
+ * every pairing above 4.5:1 wherever the chip is placed.
+ */
+const TEAL = 'bg-[#E6F8F6] text-[#00615B] border border-[#00C1B2]/40';
+const GOLD = 'bg-[#FFF3D1] text-[#6B4A00] border border-[#FFB900]/45';
+const NAVY = 'bg-[#E7EBF2] text-[#1A2B4C] border border-[#1A2B4C]/20';
+const NEUTRAL = 'bg-[#EEF0F3] text-[#3D4756] border border-[#D8DDE4]';
+const RED = 'bg-red-50 text-red-700 border border-red-200';
+
 export function getLogStatusBadgeClass(status: string) {
   switch (status) {
     case 'approved':
-      return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+      return TEAL;
     case 'flagged':
-      return 'bg-red-50 text-red-700 border border-red-200';
+      return RED;
     case 'pending':
-      return 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/30';
+      return GOLD;
     default:
-      return 'bg-[#E5E8EB] text-[#1A2B4C]/70 border border-[#E5E8EB]';
+      return NEUTRAL;
   }
 }
 
 export function getCreatorBadgeClass(role: string) {
   switch (role) {
     case 'parent':
-      return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+      return TEAL;
     case 'therapist':
-      return 'bg-[#1A2B4C]/8 text-[#1A2B4C] border border-[#1A2B4C]/15';
+      return NAVY;
     case 'admin':
-      return 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/30';
+      return GOLD;
     default:
-      return 'bg-[#E5E8EB] text-[#1A2B4C]/70 border border-[#E5E8EB]';
+      return NEUTRAL;
   }
 }
 
 export function getRoleBadgeClass(role: string) {
   switch (role) {
     case 'admin':
-      return 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/30';
+      return GOLD;
     case 'therapist':
-      return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+      return TEAL;
     case 'consultant':
-      return 'bg-[#1A2B4C]/8 text-[#1A2B4C] border border-[#1A2B4C]/15';
+      return NAVY;
     case 'parent':
-      return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+      return TEAL;
     default:
-      return 'bg-[#E5E8EB] text-[#1A2B4C]/70 border border-[#E5E8EB]';
+      return NEUTRAL;
   }
 }

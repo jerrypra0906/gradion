@@ -83,7 +83,7 @@ export function WeeklyProgramView({
                   </div>
                   {prog.domain && <div className="mt-0.5 text-xs text-gray-600">{prog.domain}</div>}
                 </div>
-                <span className="text-gray-400 text-sm shrink-0" aria-hidden>
+                <span className="text-gray-600 text-sm shrink-0" aria-hidden>
                   {expanded ? '▾' : '▸'}
                 </span>
               </button>

@@ -141,7 +141,7 @@ export function ResetPasswordPageContent() {
           Tautan kedaluwarsa?{' '}
           <Link
             href="/forgot-password"
-            className="font-medium text-gradion-teal hover:text-gradion-teal-hover"
+            className="font-medium text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover"
           >
             Minta tautan baru
           </Link>

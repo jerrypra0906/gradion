@@ -41,6 +41,51 @@ const CONDITIONAL_FS_LABEL_KEYS: Record<string, string> = {
   other_major_2: 'other_major_2_label',
 };
 
+export type IOChoice = { value: string; label: LangText };
+
+/**
+ * Anchored plain-language answers, in place of numeric estimates.
+ *
+ * The checklist used to ask for thirteen percentages and sixteen 0–5 slider
+ * drags, with the help panel telling the parent to do the arithmetic
+ * themselves ("nama dipanggil 10 kali, anak menoleh 6 kali → 60%"). A guessed
+ * percentage is worse input than a chosen description, and on a 390px screen
+ * two sliders sharing a row gave each about 165px for six values.
+ *
+ * The numbers stored are unchanged, so reports, the AI prompt and the existing
+ * observation payload all keep working — only the way they are collected
+ * changes. Band midpoints, so a description never claims more precision than
+ * the parent gave.
+ */
+export const PERCENT_CHOICES: IOChoice[] = [
+  { value: '90', label: { en: 'Almost always', id: 'Hampir selalu' } },
+  { value: '70', label: { en: 'More often than not', id: 'Lebih sering iya daripada tidak' } },
+  { value: '50', label: { en: 'About half the time', id: 'Kira-kira separuh waktu' } },
+  { value: '25', label: { en: 'Rarely, now and then', id: 'Jarang, kadang-kadang saja' } },
+  { value: '5', label: { en: 'Almost never', id: 'Hampir tidak pernah' } },
+];
+
+export const FREQUENCY_CHOICES: IOChoice[] = [
+  { value: '0', label: { en: 'Never', id: 'Tidak pernah' } },
+  { value: '1', label: { en: 'A few times a month', id: 'Beberapa kali sebulan' } },
+  { value: '2', label: { en: 'A few times a week', id: 'Beberapa kali seminggu' } },
+  { value: '3', label: { en: 'Most days', id: 'Hampir setiap hari' } },
+  { value: '4', label: { en: 'Several times a day', id: 'Beberapa kali sehari' } },
+  { value: '5', label: { en: 'Almost constantly', id: 'Hampir terus-menerus' } },
+];
+
+export const SEVERITY_CHOICES: IOChoice[] = [
+  { value: '1', label: { en: 'Barely disruptive', id: 'Hampir tidak mengganggu' } },
+  { value: '2', label: { en: 'Mild — passes quickly', id: 'Ringan — cepat reda' } },
+  { value: '3', label: { en: 'Noticeable — needs calming', id: 'Cukup terasa — perlu ditenangkan' } },
+  { value: '4', label: { en: 'Hard — stops the activity', id: 'Berat — aktivitas terhenti' } },
+  { value: '5', label: { en: 'Very hard — unsafe or very long', id: 'Sangat berat — berbahaya atau sangat lama' } },
+];
+
+export function labelForChoice(choice: IOChoice, language: 'en' | 'id'): string {
+  return language === 'id' ? choice.label.id || choice.label.en : choice.label.en || choice.label.id;
+}
+
 export function defaultInitialObservationTemplate(): IOTemplateJson {
   return {
     version: 1,
@@ -183,11 +228,13 @@ export function createEmptyObsFromTemplate(template: IOTemplateJson): ObsFlatFor
   const state: ObsFlatFormState = {};
   for (const section of template.sections) {
     for (const field of section.fields) {
+      // Nothing is pre-selected. A default of 0 meant an untouched question was
+      // stored as the real answer "never" — and because it never registered as
+      // missing, a parent could submit the whole checklist without answering
+      // any of it. "Tidak pernah" is now one tap, and a genuine answer.
       if (field.type === 'fs_1_to_5') {
-        // Frequency/Severity sliders start at 0 ("not observed") so the parent
-        // isn't forced to nudge every slider and 0 is a valid answer.
-        state[`${field.key}_f`] = '0';
-        state[`${field.key}_s`] = '0';
+        state[`${field.key}_f`] = '';
+        state[`${field.key}_s`] = '';
       } else {
         state[field.key] = '';
       }
@@ -233,6 +280,42 @@ export function missingRequiredFieldsForTemplate(
   return missing;
 }
 
+/**
+ * Field keys of every mandatory answer still missing, in template order.
+ *
+ * The submit handler used to join the localized labels into one red paragraph
+ * naming all of them — a screen of red text on a phone, after which the parent
+ * still had to find each field by name in a long scrolling form. Keys let the
+ * form mark the gaps where they are and jump to the first one.
+ */
+export function missingRequiredFieldKeysForTemplate(
+  template: IOTemplateJson,
+  obs: ObsFlatFormState,
+): string[] {
+  const missing: string[] = [];
+  for (const section of template.sections) {
+    for (const field of section.fields) {
+      if (!isFieldRequiredNow(field, obs)) continue;
+      if (field.type === 'fs_1_to_5') {
+        if (
+          String(obs[`${field.key}_f`] ?? '').trim() === '' ||
+          String(obs[`${field.key}_s`] ?? '').trim() === ''
+        ) {
+          missing.push(field.key);
+        }
+      } else if (String(obs[field.key] ?? '').trim() === '') {
+        missing.push(field.key);
+      }
+    }
+  }
+  return missing;
+}
+
+/** DOM id of a field's wrapper, so the form can scroll to and focus a gap. */
+export function observationFieldDomId(obsIndex: number, fieldKey: string): string {
+  return `obs-${obsIndex}-${fieldKey}`;
+}
+
 export function isObsCompleteForTemplate(template: IOTemplateJson, obs: ObsFlatFormState): boolean {
   for (const section of template.sections) {
     for (const field of section.fields) {
@@ -258,7 +341,7 @@ function complianceKeyFromFlat(flatKey: string): string | null {
 }
 
 export function buildObsPayloadFromFlat(obs: ObsFlatFormState) {
-  const behaviors: Record<string, { f: number; s: number; label?: string | null }> = {};
+  const behaviors: Record<string, { f: number | null; s: number | null; label?: string | null }> = {};
   const compliance_pct: Record<string, number> = {};
   const eye_contact: Record<string, number> = {};
 
@@ -270,9 +353,10 @@ export function buildObsPayloadFromFlat(obs: ObsFlatFormState) {
     const f = obs[`${base}_f`];
     const s = obs[`${base}_s`];
     if (f === undefined && s === undefined) continue;
-    const entry: { f: number; s: number; label?: string | null } = {
-      f: Number(f || 0),
-      s: Number(s || 0),
+    // Unanswered reaches the AI as missing, not as a confident zero.
+    const entry: { f: number | null; s: number | null; label?: string | null } = {
+      f: String(f ?? '').trim() === '' ? null : Number(f),
+      s: String(s ?? '').trim() === '' ? null : Number(s),
     };
     if (base === 'other_major_1' || base === 'other_major_2') {
       const labelKey = `${base}_label`;
@@ -334,10 +418,92 @@ export function buildInitialObservationPayload(
   };
 }
 
+/**
+ * Labels are authored with clinician notation — "(%)", "(F / S)" — which meant
+ * nothing to the parent answering the question and now describes a control
+ * that no longer exists. Strip it at display time so admin-edited templates
+ * keep working without a migration.
+ */
+function stripClinicianNotation(label: string): string {
+  return label
+    .replace(/\s*\((?:%|F\s*\/\s*S)\)\s*$/i, '')
+    .replace(/\s*\(F\s*\/\s*S\)/i, '')
+    .trim();
+}
+
 export function labelForField(field: IOField, language: 'en' | 'id'): string {
-  return language === 'id' ? field.label.id || field.label.en : field.label.en || field.label.id;
+  const raw = language === 'id' ? field.label.id || field.label.en : field.label.en || field.label.id;
+  return stripClinicianNotation(raw) || raw;
 }
 
 export function titleForSection(section: IOSection, language: 'en' | 'id'): string {
-  return language === 'id' ? section.title.id || section.title.en : section.title.en || section.title.id;
+  const raw = language === 'id' ? section.title.id || section.title.en : section.title.en || section.title.id;
+  return stripClinicianNotation(raw) || raw;
+}
+
+/**
+ * Answered vs required for one section, for the desktop section rail. A parent
+ * filling a long checklist needs to see where they are without scrolling it.
+ */
+export function sectionProgress(
+  section: IOSection,
+  obs: ObsFlatFormState,
+): { answered: number; total: number } {
+  let answered = 0;
+  let total = 0;
+  for (const field of section.fields) {
+    if (!isFieldRequiredNow(field, obs)) continue;
+    total += 1;
+    if (field.type === 'fs_1_to_5') {
+      if (
+        String(obs[`${field.key}_f`] ?? '').trim() !== '' &&
+        String(obs[`${field.key}_s`] ?? '').trim() !== ''
+      ) {
+        answered += 1;
+      }
+    } else if (String(obs[field.key] ?? '').trim() !== '') {
+      answered += 1;
+    }
+  }
+  return { answered, total };
+}
+
+/**
+ * Read a stored number back as the description the parent actually chose.
+ *
+ * The child page still showed the observation as raw 0–5 numbers and disabled
+ * sliders — the shape of the old form, not of the answers now being collected.
+ * A parent who picked "Beberapa kali seminggu" should read that back.
+ */
+function nearestChoice(choices: IOChoice[], value: number): IOChoice | null {
+  let best: IOChoice | null = null;
+  let bestGap = Infinity;
+  for (const c of choices) {
+    const gap = Math.abs(Number(c.value) - value);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = c;
+    }
+  }
+  return best;
+}
+
+export function describeFrequency(value: unknown, language: 'en' | 'id'): string | null {
+  if (!Number.isFinite(Number(value))) return null;
+  const c = nearestChoice(FREQUENCY_CHOICES, Number(value));
+  return c ? labelForChoice(c, language) : null;
+}
+
+export function describeSeverity(value: unknown, language: 'en' | 'id'): string | null {
+  if (!Number.isFinite(Number(value))) return null;
+  const n = Number(value);
+  if (n <= 0) return language === 'id' ? 'Tidak ada' : 'None';
+  const c = nearestChoice(SEVERITY_CHOICES, n);
+  return c ? labelForChoice(c, language) : null;
+}
+
+export function describePercent(value: unknown, language: 'en' | 'id'): string | null {
+  if (!Number.isFinite(Number(value))) return null;
+  const c = nearestChoice(PERCENT_CHOICES, Number(value));
+  return c ? labelForChoice(c, language) : null;
 }

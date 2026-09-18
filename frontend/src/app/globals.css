@@ -298,3 +298,50 @@ input[type="range"]::-moz-range-track {
   }
 }
 
+
+/*
+ * Baseline interaction thresholds, applied globally so they hold everywhere
+ * rather than per-component. From the UX review's sprint 4:
+ *   - 44px minimum touch target on touch devices
+ *   - a focus ring that is always visible for keyboard users
+ *   - colour is never the only signal (enforced in components, not here)
+ */
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  [role='menuitem'],
+  a[href] > button,
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-height: 44px;
+  }
+
+  /* Inline text links inside a paragraph keep their natural flow. */
+  p button,
+  p [role='button'],
+  span > button {
+    min-height: 0;
+  }
+}
+
+:where(button, a[href], [role='button'], [role='menuitem'], input, select, textarea):focus-visible {
+  outline: 2px solid #00c1b2;
+  outline-offset: 2px;
+}
+
+/*
+ * Brand teal has two roles, because white on full-strength teal is 2.27:1 —
+ * below the 4.5:1 text minimum, and it was carrying the primary button.
+ *   --brand-teal         full strength: progress bars, borders, icons, and
+ *                        fills on navy, where the 3:1 non-text bar applies
+ *   --brand-teal-strong  filled buttons and teal text on light surfaces
+ *                        (white on it is 5.72:1)
+ *   --brand-ink-on-teal  text and glyphs sitting ON full-strength teal (6.31:1)
+ */
+:root {
+  --brand-navy: #1a2b4c;
+  --brand-teal: #00c1b2;
+  --brand-teal-strong: #00736c;
+  --brand-teal-strong-hover: #005e58;
+  --brand-ink-on-teal: #06302d;
+}

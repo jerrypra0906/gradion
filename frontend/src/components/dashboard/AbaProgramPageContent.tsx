@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Clock, ListChecks, Pause, Play, PlayCircle, Target } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardPageHeader } from '@/components/dashboard/DashboardPageHeader';
@@ -11,6 +12,8 @@ import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useTranslation } from '@/hooks/useTranslation';
+import { planLanguageNotice, useAbaPlanLanguage } from '@/hooks/useAbaPlanLanguage';
+import { moduleForProgram, moduleLengthLabel } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 
 type GuidedActivity = {
@@ -37,42 +40,63 @@ type TrialSetPayload = {
   trial_data: string;
 };
 
+/**
+ * The four score buttons a parent taps eight-plus times per task.
+ *
+ * No traffic-light fills: a red card reading "wrong" about an autistic child's
+ * attempt is a judgement nobody asked for, and it appears eight times a
+ * session. The glyph and the word carry the meaning; the tints only separate
+ * the buttons from each other. Red/amber/green stays where it belongs — on the
+ * score that drives the progression gate.
+ */
 const RESULT_OPTIONS: {
   token: TrialResult;
   labelKey: 'abaGuidedResultPlus' | 'abaGuidedResultPrompted' | 'abaGuidedResultIncorrect' | 'abaGuidedResultOther';
   short: string;
   tone: string;
-  selectedTone: string;
 }[] = [
   {
     token: '+',
     labelKey: 'abaGuidedResultPlus',
     short: '+',
-    tone: 'border-[#00C1B2]/30 bg-[#00C1B2]/5 text-[#00A896] hover:bg-[#00C1B2]/10',
-    selectedTone: 'border-[#00C1B2] bg-[#00C1B2]/15 ring-2 ring-[#00C1B2]/40',
+    tone: 'border-[#00C1B2]/40 bg-[#00C1B2]/8 text-[#00776C] hover:bg-[#00C1B2]/15 active:bg-[#00C1B2]/25',
   },
   {
     token: 'p',
     labelKey: 'abaGuidedResultPrompted',
     short: 'p',
-    tone: 'border-[#FFB900]/35 bg-[#FFB900]/10 text-[#1A2B4C] hover:bg-[#FFB900]/15',
-    selectedTone: 'border-[#FFB900] bg-[#FFB900]/20 ring-2 ring-[#FFB900]/40',
+    tone: 'border-[#1A2B4C]/25 bg-[#1A2B4C]/5 text-[#1A2B4C] hover:bg-[#1A2B4C]/10 active:bg-[#1A2B4C]/15',
   },
   {
     token: '-',
     labelKey: 'abaGuidedResultIncorrect',
     short: '−',
-    tone: 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100',
-    selectedTone: 'border-red-400 bg-red-50 ring-2 ring-red-300/50',
+    tone: 'border-[#E5E8EB] bg-white text-[#1A2B4C] hover:bg-[#E5E8EB]/40 active:bg-[#E5E8EB]/70',
   },
   {
     token: 'os',
     labelKey: 'abaGuidedResultOther',
     short: 'os',
-    tone: 'border-[#E5E8EB] bg-[#FDF8F1]/60 text-[#1A2B4C]/70 hover:bg-[#E5E8EB]/50',
-    selectedTone: 'border-[#1A2B4C]/30 bg-[#1A2B4C]/5 ring-2 ring-[#1A2B4C]/15',
+    tone: 'border-[#E5E8EB] bg-[#FDF8F1]/70 text-[#1A2B4C]/60 hover:bg-[#E5E8EB]/40 active:bg-[#E5E8EB]/70',
   },
 ];
+
+/**
+ * The phase a trial is recorded against. It is already in the plan — as the
+ * program's first target, or after the colon in the activity title — so asking
+ * the parent to type it on every trial opened a keyboard in the middle of the
+ * product's most frequent interaction, with a child waiting.
+ */
+function defaultPhaseForActivity(activity: GuidedActivity, program: any): string {
+  const target =
+    Array.isArray(program?.targets) && program.targets.length
+      ? String(program.targets[0]).trim()
+      : '';
+  if (target) return target;
+  const title = String(activity?.title ?? '').trim();
+  const afterColon = title.includes(':') ? title.slice(title.indexOf(':') + 1).trim() : '';
+  return afterColon || title;
+}
 
 function youtubeEmbedSrc(url: string): string | null {
   try {
@@ -109,11 +133,12 @@ function localizeGuidedStepDisplay(step: string, lang: string): string {
   return s;
 }
 
-function entriesToTrialSets(entries: TrialEntry[]): TrialSetPayload[] {
+function entriesToTrialSets(entries: TrialEntry[], fallbackPhase: string): TrialSetPayload[] {
   const groups: { phase: string; results: TrialResult[] }[] = [];
   for (const e of entries) {
-    const phase = e.phase_or_target.trim();
-    if (!phase) continue;
+    // Never drop a recorded trial for want of a label — a blank phase used to
+    // discard the score silently, losing practice the parent had already done.
+    const phase = e.phase_or_target.trim() || fallbackPhase.trim() || 'Latihan';
     const last = groups[groups.length - 1];
     if (last && last.phase === phase) {
       last.results.push(e.result);
@@ -126,6 +151,54 @@ function entriesToTrialSets(entries: TrialEntry[]): TrialSetPayload[] {
     trial_count: g.results.length,
     trial_data: g.results.join(' '),
   }));
+}
+
+/** Read one trial string ("+ + p os -") back into individual results. */
+function parseTrialData(raw: unknown): TrialResult[] {
+  const s = String(raw ?? '');
+  const out: TrialResult[] = [];
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === '+') out.push('+');
+    else if (c === 'p' || c === 'P') out.push('p');
+    else if (c === '-' || c === '−' || c === '–') out.push('-');
+    else if ((c === 'o' || c === 'O') && (s[i + 1] === 's' || s[i + 1] === 'S')) {
+      out.push('os');
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Rehydrate an interrupted guided session from whatever was autosaved. Shape
+ * matches what `finish` posts, so the same payload round-trips.
+ */
+function readSavedTrials(rawResults: unknown): {
+  trials: Record<string, TrialEntry[]>;
+  finished: Record<string, boolean>;
+  phases: Record<string, string>;
+} | null {
+  const activities = (rawResults as { activities?: unknown })?.activities;
+  if (!Array.isArray(activities)) return null;
+  const trials: Record<string, TrialEntry[]> = {};
+  const finished: Record<string, boolean> = {};
+  const phases: Record<string, string> = {};
+  for (const a of activities as any[]) {
+    const id = a?.activity_id != null ? String(a.activity_id) : '';
+    if (!id) continue;
+    const entries: TrialEntry[] = [];
+    for (const set of Array.isArray(a?.trial_sets) ? a.trial_sets : []) {
+      const phase = String(set?.phase_or_target ?? '');
+      if (phase && phases[id] === undefined) phases[id] = phase;
+      for (const result of parseTrialData(set?.trial_data)) {
+        entries.push({ phase_or_target: phase, result });
+      }
+    }
+    trials[id] = entries;
+    if (a?.finished === true) finished[id] = true;
+  }
+  return { trials, finished, phases };
 }
 
 export function AbaProgramPageContent() {
@@ -147,10 +220,17 @@ export function AbaProgramPageContent() {
   const [remaining, setRemaining] = useState(0);
   const [trialsByActivity, setTrialsByActivity] = useState<Record<string, TrialEntry[]>>({});
   const [trialsFinishedByActivity, setTrialsFinishedByActivity] = useState<Record<string, boolean>>({});
-  const [draftPhase, setDraftPhase] = useState('');
-  const [draftResult, setDraftResult] = useState<TrialResult | null>(null);
-  const [trialStepError, setTrialStepError] = useState('');
+  /** Phase per activity, seeded from the plan; editable once, not per trial. */
+  const [phaseByActivity, setPhaseByActivity] = useState<Record<string, string>>({});
+  const [editingPhase, setEditingPhase] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [resumed, setResumed] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const autosaveArmedRef = useRef(false);
+  /** Bumped to re-read the week after its plan is translated. */
+  const [reloadToken, setReloadToken] = useState(0);
+  /** Latest `recordTrial`, so the key handler is bound once but never stale. */
+  const keyScoreRef = useRef<((token: TrialResult) => void) | null>(null);
 
   const activities: GuidedActivity[] = useMemo(() => {
     const plan: any = week?.plan_json;
@@ -220,7 +300,7 @@ export function AbaProgramPageContent() {
         setLoading(true);
         setError('');
         const res = await apiClient.get<ApiResponse<{ weeks: AbaProgramWeek[] }>>(
-          `/aba-program/children/${childId}/weeks`
+          `/aba-program/children/${childId}/weeks?lang=${language === 'id' ? 'id' : 'en'}`
         );
         if (!res.data.success) {
           setError(res.data.error || 'Failed to load week');
@@ -232,13 +312,23 @@ export function AbaProgramPageContent() {
           return;
         }
         setWeek(w);
+
+        // Pick up where an interrupted session left off.
+        const session = w.sessions?.find((s) => s.id === sessionId) || null;
+        const saved = readSavedTrials(session?.guided_results_json);
+        if (saved) {
+          setTrialsByActivity(saved.trials);
+          setTrialsFinishedByActivity(saved.finished);
+          setPhaseByActivity(saved.phases);
+          setResumed(Object.values(saved.trials).some((list) => list.length > 0));
+        }
       } catch (e: any) {
         setError(e.response?.data?.error || 'Failed to load week');
       } finally {
         setLoading(false);
       }
     })();
-  }, [user, childId, weekId]);
+  }, [user, childId, weekId, language, reloadToken]);
 
   const current = filteredActivities[idx];
   const expectedTrials = Math.max(
@@ -263,9 +353,11 @@ export function AbaProgramPageContent() {
   };
 
   const currentEntries = current?.id ? trialsByActivity[current.id] || [] : [];
-  const trialsComplete =
-    !!current?.id &&
-    (trialsFinishedByActivity[current.id] || currentEntries.length >= expectedTrials);
+  // Completion is the explicit flag only — `recordTrial` raises it when the
+  // expected count is reached. Deriving it from the count as well made
+  // "Lanjutkan trial" a dead button on a finished task, and blocked a parent
+  // who wanted to record a few extra trials.
+  const trialsComplete = !!current?.id && Boolean(trialsFinishedByActivity[current.id]);
   const trialNumber = Math.min(currentEntries.length + 1, expectedTrials);
 
   useEffect(() => {
@@ -284,16 +376,78 @@ export function AbaProgramPageContent() {
     };
   }, [idx, current?.id, timerSeconds]);
 
+  // Seed the phase for a task from the plan the first time it is opened.
   useEffect(() => {
     if (!current?.id) return;
-    setDraftPhase('');
-    setDraftResult(null);
-    setTrialStepError('');
-    const entries = trialsByActivity[current.id] || [];
-    const last = entries[entries.length - 1];
-    if (last?.phase_or_target) setDraftPhase(last.phase_or_target);
+    setEditingPhase(false);
+    setPhaseByActivity((prev) => {
+      if (prev[current.id] !== undefined) return prev;
+      const linked = current.linked_program_id ? String(current.linked_program_id) : '';
+      const program = linked ? programById.get(linked) : null;
+      return { ...prev, [current.id]: defaultPhaseForActivity(current, program) };
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
+
+  const planLanguage = useAbaPlanLanguage({
+    childId,
+    week,
+    language,
+    paused: loading,
+    onTranslated: () => setReloadToken((n) => n + 1),
+  });
+
+  // Autosave every scored trial, so an interrupted session is resumable rather
+  // than lost. Debounced because a parent taps through trials quickly.
+  useEffect(() => {
+    if (!week || !sessionId || loading) return;
+    if (!autosaveArmedRef.current) {
+      // Don't write back the state we just rehydrated.
+      autosaveArmedRef.current = true;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const results = {
+        activities: filteredActivities.map((a) => ({
+          activity_id: a.id,
+          linked_program_id: a.linked_program_id || null,
+          finished: Boolean(trialsFinishedByActivity[a.id]),
+          trial_sets: entriesToTrialSets(
+            trialsByActivity[a.id] || [],
+            phaseByActivity[a.id] ?? String(a.title ?? ''),
+          ),
+        })),
+      };
+      void apiClient
+        .post(
+          `/aba-program/children/${childId}/weeks/${week.id}/sessions/${sessionId}/save-guided-progress`,
+          { results },
+        )
+        .then(() => setSavedAt(Date.now()))
+        .catch(() => {
+          // Non-fatal: the results are still in hand and submitted at the end.
+        });
+    }, 800);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trialsByActivity, trialsFinishedByActivity, loading]);
+
+  // Desktop only: scoring a trial from the keyboard. Mobile keeps no keyboard
+  // anywhere in the daily loop, which is the whole point of finding 01.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (window.matchMedia('(pointer: coarse)').matches) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      const token = { '1': '+', '2': 'p', '3': '-', '0': 'os' }[e.key] as TrialResult | undefined;
+      if (!token) return;
+      e.preventDefault();
+      keyScoreRef.current?.(token);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (!user) return null;
 
@@ -346,50 +500,56 @@ export function AbaProgramPageContent() {
     );
   }
 
-  const saveCurrentTrial = (): boolean => {
-    const phase = draftPhase.trim();
-    if (!phase) {
-      setTrialStepError(t('abaGuidedEnterPhase'));
-      return false;
-    }
-    if (!draftResult) {
-      setTrialStepError(t('abaGuidedSelectResult'));
-      return false;
-    }
+  const currentPhase = phaseByActivity[current.id] ?? '';
+
+  /**
+   * One tap per trial: the score is recorded and the counter moves on. Scoring
+   * used to leave the parent with two more undifferentiated buttons ("Selesai
+   * trial" / "Trial berikutnya") for a decision they had already made.
+   */
+  const recordTrial = (token: TrialResult) => {
     setTrialsByActivity((prev) => {
-      const next = [...(prev[current.id] || []), { phase_or_target: phase, result: draftResult }];
+      const next = [...(prev[current.id] || []), { phase_or_target: currentPhase, result: token }];
       if (next.length >= expectedTrials) {
         setTrialsFinishedByActivity((f) => ({ ...f, [current.id]: true }));
       }
       return { ...prev, [current.id]: next };
     });
-    setDraftResult(null);
-    setTrialStepError('');
-    return true;
+  };
+
+  keyScoreRef.current = trialsComplete || editingPhase ? null : recordTrial;
+
+  /** Mis-taps during a session with a distressed child are certain. */
+  const undoLastTrial = () => {
+    setTrialsByActivity((prev) => {
+      const entries = prev[current.id] || [];
+      if (entries.length === 0) return prev;
+      return { ...prev, [current.id]: entries.slice(0, -1) };
+    });
+    setTrialsFinishedByActivity((prev) => ({ ...prev, [current.id]: false }));
   };
 
   const markTrialsFinished = () => {
-    if (draftPhase.trim() && draftResult) saveCurrentTrial();
     setTrialsFinishedByActivity((prev) => ({ ...prev, [current.id]: true }));
-    setDraftResult(null);
-    setTrialStepError('');
   };
 
-  const handleNextTrial = () => {
-    saveCurrentTrial();
-  };
+  const buildResultsPayload = () => ({
+    activities: filteredActivities.map((a) => ({
+      activity_id: a.id,
+      linked_program_id: a.linked_program_id || null,
+      finished: Boolean(trialsFinishedByActivity[a.id]),
+      trial_sets: entriesToTrialSets(
+        trialsByActivity[a.id] || [],
+        phaseByActivity[a.id] ?? String(a.title ?? ''),
+      ),
+    })),
+  });
 
   const finish = async () => {
     try {
       setSubmitting(true);
       setError('');
-      const payload = {
-        activities: filteredActivities.map((a) => ({
-          activity_id: a.id,
-          linked_program_id: a.linked_program_id || null,
-          trial_sets: entriesToTrialSets(trialsByActivity[a.id] || []),
-        })),
-      };
+      const payload = buildResultsPayload();
       const res = await apiClient.post(
         `/aba-program/children/${childId}/weeks/${week.id}/sessions/${sessionId}/complete-guided`,
         { results: payload }
@@ -407,8 +567,12 @@ export function AbaProgramPageContent() {
   };
 
   const isLast = idx >= filteredActivities.length - 1;
+  const anyTrialsRecorded = filteredActivities.some(
+    (a) => (trialsByActivity[a.id] || []).length > 0,
+  );
   const linkedId = current.linked_program_id ? String(current.linked_program_id) : '';
   const linkedProgram = linkedId ? programById.get(linkedId) || null : null;
+  const sessionModule = moduleForProgram(linkedProgram);
   const rawVideoUrl = (() => {
     const act = String(current.video_url || '').trim();
     if (act) return act;
@@ -425,7 +589,7 @@ export function AbaProgramPageContent() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-3xl space-y-6 pb-28">
+      <div className="mx-auto max-w-3xl space-y-6 pb-28 lg:max-w-6xl">
         <DashboardPageHeader
           icon={Target}
           title={current.title}
@@ -444,7 +608,7 @@ export function AbaProgramPageContent() {
                 <span
                   className={cn(
                     'rounded-full px-3 py-1 text-xs font-semibold',
-                    idx === 0 ? 'bg-[#00C1B2] text-white' : 'text-white/60',
+                    idx === 0 ? 'bg-[#00C1B2] text-[#06302D]' : 'text-white/60',
                   )}
                 >
                   {language === 'id' ? 'Tugas' : 'Task'} {idx + 1}/{filteredActivities.length}
@@ -472,13 +636,15 @@ export function AbaProgramPageContent() {
                         ? 'Jeda timer'
                         : 'Pause timer'
                   }
-                  className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-colors hover:bg-white/30"
+                  className="group -my-2 ml-0.5 flex h-11 w-11 items-center justify-center rounded-full"
                 >
-                  {timerPaused ? (
-                    <Play className="h-3.5 w-3.5" aria-hidden />
-                  ) : (
-                    <Pause className="h-3.5 w-3.5" aria-hidden />
-                  )}
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 transition-colors group-hover:bg-white/30">
+                    {timerPaused ? (
+                      <Play className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Pause className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </span>
                 </button>
                 {timerPaused && (
                   <span className="pr-1 text-[11px] font-semibold uppercase tracking-wide text-[#FFB900]">
@@ -505,9 +671,32 @@ export function AbaProgramPageContent() {
           </span>
         </div>
 
+        {/*
+          Desktop is a sit-down surface, so the extra width goes to context on
+          the left and a scoring rail on the right that does not move between
+          trials. On mobile this is still one column, in the same order.
+        */}
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-6">
+          <div className="space-y-6">
+
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {/* Never show the other language without saying why. */}
+        {planLanguage.untranslated && (
+          <div className="rounded-xl border border-[#FFB900]/35 bg-[#FFB900]/10 px-4 py-3 text-sm text-[#1A2B4C]">
+            {planLanguageNotice(planLanguage.reason, language)}
+          </div>
+        )}
+
+        {resumed && (
+          <div className="rounded-xl border border-[#00C1B2]/30 bg-[#00C1B2]/8 px-4 py-3 text-sm text-[#1A2B4C]">
+            {language === 'id'
+              ? 'Sesi dilanjutkan — trial yang sudah dicatat masih tersimpan.'
+              : 'Session resumed — the trials you already recorded are still here.'}
           </div>
         )}
 
@@ -608,7 +797,7 @@ export function AbaProgramPageContent() {
               href={rawVideoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="break-all text-sm font-medium text-[#00A896] underline hover:text-[#00C1B2]"
+              className="break-all text-sm font-medium text-[#00736C] underline hover:text-[#005E58]"
             >
               {rawVideoUrl}
             </a>
@@ -619,13 +808,39 @@ export function AbaProgramPageContent() {
                 href={ytSearchHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-block text-sm font-semibold text-[#00A896] underline hover:text-[#00C1B2]"
+                className="mt-2 inline-block text-sm font-semibold text-[#00736C] underline hover:text-[#005E58]"
               >
                 {t('abaProgramVideoOpenYouTube')}
               </a>
             </div>
           )}
         </DashboardSectionCard>
+
+        {/*
+          Learning at the point of need: the one module matching the program
+          about to be run, with its length stated, instead of a locked
+          curriculum sitting in a separate corner of the app.
+        */}
+        {sessionModule && (
+          <Link
+            href={`/dashboard/modules/${sessionModule.key}`}
+            className="block rounded-xl border border-[#E5E8EB] bg-white px-4 py-3 transition-colors hover:border-[#00C1B2]/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[#1A2B4C]/50">
+                  {language === 'id' ? 'Bacaan singkat untuk sesi ini' : 'Quick read for this session'}
+                </div>
+                <div className="mt-0.5 truncate text-sm font-semibold text-[#1A2B4C]">
+                  {language === 'id' ? sessionModule.title.id : sessionModule.title.en}
+                </div>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-[#00736C]">
+                {moduleLengthLabel(sessionModule, language)} ›
+              </span>
+            </div>
+          </Link>
+        )}
 
         {current.steps && current.steps.length > 0 && (
           <DashboardSectionCard
@@ -644,12 +859,16 @@ export function AbaProgramPageContent() {
           </DashboardSectionCard>
         )}
 
+          </div>
+
+          <div className="mt-6 lg:mt-0 lg:sticky lg:top-6">
         <DashboardSectionCard
           title={language === 'id' ? 'Catat trial' : 'Record trials'}
           subtitle={
-            trialsComplete
+            (trialsComplete
               ? `${currentEntries.length} ${t('abaGuidedTrialsRecorded')}`
-              : `${t('abaGuidedTrialStep')} ${trialNumber} ${t('abaGuidedTrialOf')} ${expectedTrials}`
+              : `${t('abaGuidedTrialStep')} ${trialNumber} ${t('abaGuidedTrialOf')} ${expectedTrials}`) +
+            (savedAt ? (language === 'id' ? ' · Tersimpan' : ' · Saved') : '')
           }
         >
           {!trialsComplete && (
@@ -687,7 +906,7 @@ export function AbaProgramPageContent() {
                     >
                       <span className="text-[#1A2B4C]/50">{i + 1}.</span>
                       <span className="max-w-[8rem] truncate">{e.phase_or_target}</span>
-                      <span className="font-mono font-bold text-[#00A896]">{e.result}</span>
+                      <span className="font-mono font-bold text-[#00736C]">{e.result}</span>
                     </span>
                   ))}
                 </div>
@@ -705,72 +924,145 @@ export function AbaProgramPageContent() {
             </div>
           ) : (
             <div className="space-y-5">
-              <Input
-                id="phase-target"
-                variant="brand"
-                label={t('abaGuidedPhaseTarget')}
-                type="text"
-                autoComplete="off"
-                value={draftPhase}
-                onChange={(e) => {
-                  setDraftPhase(e.target.value);
-                  setTrialStepError('');
-                }}
-                placeholder={t('abaGuidedPhasePlaceholder')}
-              />
+              {/* Phase comes from the plan. Shown, not asked for. */}
+              {editingPhase ? (
+                <div className="space-y-2">
+                  <Input
+                    id="phase-target"
+                    variant="brand"
+                    label={t('abaGuidedPhaseTarget')}
+                    type="text"
+                    autoComplete="off"
+                    autoFocus
+                    value={currentPhase}
+                    onChange={(e) =>
+                      setPhaseByActivity((prev) => ({ ...prev, [current.id]: e.target.value }))
+                    }
+                    placeholder={t('abaGuidedPhasePlaceholder')}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditingPhase(false)}
+                  >
+                    {language === 'id' ? 'Selesai' : 'Done'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                  <span className="text-[#1A2B4C]/55">{t('abaGuidedPhaseTarget')}:</span>
+                  <span className="font-semibold text-[#1A2B4C]">
+                    {currentPhase || (language === 'id' ? 'Latihan' : 'Practice')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingPhase(true)}
+                    className="inline-flex min-h-[44px] items-center rounded px-1 text-xs font-semibold text-[#00736C] underline underline-offset-2 hover:text-[#005E58] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
+                  >
+                    {language === 'id' ? 'Ubah' : 'Change'}
+                  </button>
+                </div>
+              )}
 
               <div>
                 <p className="mb-2 text-sm font-medium text-[#1A2B4C]">{t('abaGuidedPickResult')}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {RESULT_OPTIONS.map((opt) => {
-                    const selected = draftResult === opt.token;
-                    return (
-                      <button
-                        key={opt.token}
-                        type="button"
-                        aria-pressed={selected}
-                        className={cn(
-                          'rounded-xl border-2 px-3 py-5 text-center transition touch-manipulation',
-                          selected ? opt.selectedTone : opt.tone,
-                        )}
-                        onClick={() => {
-                          setDraftResult(opt.token);
-                          setTrialStepError('');
-                        }}
-                      >
-                        <span className="block text-2xl font-bold leading-none">{opt.short}</span>
-                        <span className="mt-1 block text-xs font-medium leading-tight">
-                          {t(opt.labelKey)}
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:gap-2">
+                  {RESULT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.token}
+                      type="button"
+                      className={cn(
+                        'min-h-[76px] rounded-xl border-2 px-3 py-5 text-center transition touch-manipulation',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/50',
+                        opt.tone,
+                      )}
+                      onClick={() => recordTrial(opt.token)}
+                    >
+                      <span className="block text-2xl font-bold leading-none">{opt.short}</span>
+                      <span className="mt-1 block text-xs font-medium leading-tight">
+                        {t(opt.labelKey)}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {trialStepError && (
-                <p className="text-sm text-red-600" role="alert">
-                  {trialStepError}
+              {/*
+                A visible log of what was recorded, and the promise that closing
+                the page loses nothing — stated in the interface rather than
+                left for the parent to assume.
+              */}
+              <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 p-3">
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#1A2B4C]/55">
+                    {language === 'id' ? 'Trial sesi ini' : 'Trials this session'}
+                  </span>
+                  <span className="text-xs text-[#1A2B4C]/55">
+                    {currentEntries.length} {language === 'id' ? 'tercatat' : 'recorded'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {Array.from({ length: expectedTrials }).map((_, i) => {
+                    const e = currentEntries[i];
+                    return (
+                      <span
+                        key={i}
+                        className={cn(
+                          'inline-flex h-7 w-7 items-center justify-center rounded-lg border text-xs font-bold',
+                          e
+                            ? i === currentEntries.length - 1
+                              ? 'border-[#00C1B2] bg-[#00C1B2]/15 text-[#00736C]'
+                              : 'border-[#E5E8EB] bg-white text-[#1A2B4C]'
+                            : 'border-dashed border-[#E5E8EB] text-[#1A2B4C]/30',
+                        )}
+                        title={e ? `${i + 1}. ${e.phase_or_target}` : undefined}
+                      >
+                        {e ? (e.result === '-' ? '−' : e.result) : i + 1}
+                      </span>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-[#1A2B4C]/55">
+                  {language === 'id'
+                    ? 'Setiap trial tersimpan saat kamu mengetuk. Tutup halaman kapan saja — sesi bisa dilanjutkan.'
+                    : 'Every trial is saved as you tap. Close the page any time — the session can be resumed.'}
                 </p>
-              )}
+              </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={markTrialsFinished}>
-                  {t('abaGuidedTrialFinish')}
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] w-full sm:w-auto"
+                  onClick={undoLastTrial}
+                  disabled={currentEntries.length === 0}
+                >
+                  {language === 'id' ? 'Batalkan trial terakhir' : 'Undo last trial'}
                 </Button>
                 <Button
                   type="button"
-                  variant="brand"
-                  className="w-full sm:w-auto"
-                  onClick={handleNextTrial}
-                  disabled={!draftPhase.trim() || !draftResult}
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] w-full text-[#1A2B4C]/60 sm:w-auto"
+                  onClick={markTrialsFinished}
                 >
-                  {t('abaGuidedTrialNext')}
+                  {t('abaGuidedTrialFinish')}
                 </Button>
               </div>
+
+              <p className="hidden rounded-lg bg-[#FDF8F1]/70 px-3 py-2 text-xs text-[#1A2B4C]/55 lg:block">
+                {language === 'id'
+                  ? 'Tombol 1 · 2 · 3 · 0 di keyboard juga bisa.'
+                  : 'Keys 1 · 2 · 3 · 0 work too.'}
+              </p>
             </div>
           )}
         </DashboardSectionCard>
+
+          </div>
+        </div>
 
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#E5E8EB] bg-[#FDF8F1]/95 px-4 py-4 backdrop-blur-sm">
           <div className="mx-auto flex max-w-3xl flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -791,6 +1083,24 @@ export function AbaProgramPageContent() {
             {isLast && trialsComplete && (
               <Button variant="brand" className="w-full sm:w-auto" onClick={finish} disabled={submitting}>
                 {submitting ? t('loading') : language === 'id' ? 'Kirim hasil' : 'Submit results'}
+              </Button>
+            )}
+            {/*
+              A session that has to be abandoned — a meltdown, a phone that
+              locked — should end with the practice counted, not discarded.
+            */}
+            {!(isLast && trialsComplete) && anyTrialsRecorded && (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={finish}
+                disabled={submitting}
+              >
+                {submitting
+                  ? t('loading')
+                  : language === 'id'
+                    ? 'Akhiri sesi & simpan hasil'
+                    : 'End session & keep results'}
               </Button>
             )}
           </div>

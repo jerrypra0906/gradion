@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Copy, Fingerprint, KeyRound, Sparkles, User } from 'lucide-react';
+import { Check, Compass, Copy, Fingerprint, KeyRound, Sparkles, User } from 'lucide-react';
 import {
   BiometricCredential,
   biometricIsAvailable,
@@ -93,7 +93,7 @@ import { cn } from '@/lib/utils';
 export function ProfilePageContent() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionData | null>(null);
   const [availablePlans, setAvailablePlans] = useState<AvailablePlans | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -462,6 +462,16 @@ export function ProfilePageContent() {
           }
         />
 
+        {/* The dashboard tour used to own the only button above the fold there. */}
+        <div className="flex justify-end">
+          <Link href="/dashboard?tour=1">
+            <Button variant="outline" size="sm" className="gap-2">
+              <Compass className="h-4 w-4" aria-hidden />
+              {language === 'id' ? 'Lihat tur lagi' : 'Replay the tour'}
+            </Button>
+          </Link>
+        </div>
+
         <DashboardSectionCard
           title="Account Information"
           action={
@@ -702,14 +712,14 @@ export function ProfilePageContent() {
             <div>
               <dt className="text-sm font-medium text-[#1A2B4C]/55">{t('referralCode')}</dt>
               <dd className="mt-1 flex items-center gap-2">
-                <span className="font-mono text-lg font-bold text-[#00C1B2]">
+                <span className="font-mono text-lg font-bold text-[#00736C]">
                   {userProfile?.referral_code ?? '—'}
                 </span>
                 {userProfile?.referral_code && (
                   <button
                     type="button"
                     onClick={copyReferralCode}
-                    className="inline-flex items-center gap-1 text-sm font-semibold text-[#00C1B2] hover:text-[#00A896]"
+                    className="inline-flex min-h-[44px] items-center gap-1 rounded px-2 text-sm font-semibold text-[#00736C] hover:text-[#005E58] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C1B2]/40"
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden />
                     Copy
@@ -718,7 +728,7 @@ export function ProfilePageContent() {
               </dd>
               <p className="mt-2 text-xs text-[#1A2B4C]/50">{t('shareReferralCode')}</p>
               {(userProfile?.referral_signups ?? 0) > 0 && (
-                <p className="mt-1 text-xs font-medium text-[#00A896]">
+                <p className="mt-1 text-xs font-medium text-[#00736C]">
                   {userProfile?.referral_signups} friend
                   {userProfile?.referral_signups === 1 ? '' : 's'} registered with your code
                 </p>
@@ -727,7 +737,7 @@ export function ProfilePageContent() {
             <div>
               <dt className="text-sm font-medium text-[#1A2B4C]/55">{t('pointsBalance')}</dt>
               <dd className="mt-1 flex items-baseline gap-2">
-                <span className="font-montserrat text-3xl font-bold text-[#FFB900]">
+                <span className="font-montserrat text-3xl font-bold text-[#8A6100]">
                   {(userProfile?.points ?? 0).toLocaleString('id-ID')}
                 </span>
                 <span className="text-sm text-[#1A2B4C]/55">points</span>
@@ -750,7 +760,7 @@ export function ProfilePageContent() {
                   active
                     ? isOnTrial()
                       ? 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/40'
-                      : 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25'
+                      : 'bg-[#00C1B2]/10 text-[#00736C] border border-[#00C1B2]/25'
                     : 'bg-red-50 text-red-700 border border-red-200',
                 )}
               >
@@ -835,8 +845,8 @@ export function ProfilePageContent() {
                       daysRemaining <= 7
                         ? 'text-red-600'
                         : daysRemaining <= 30
-                          ? 'text-[#FFB900]'
-                          : 'text-[#00A896]',
+                          ? 'text-[#8A6100]'
+                          : 'text-[#00736C]',
                     )}
                   >
                     {daysRemaining > 0 ? `${daysRemaining} days` : 'Expired'}
@@ -914,7 +924,7 @@ export function ProfilePageContent() {
                       </div>
                       <div>
                         <dt className="text-sm font-medium text-[#1A2B4C]/55">Tokens Remaining</dt>
-                        <dd className="mt-1 text-sm font-semibold text-[#00A896]">
+                        <dd className="mt-1 text-sm font-semibold text-[#00736C]">
                           {tokenRemaining.toLocaleString('id-ID')} tokens
                         </dd>
                       </div>
@@ -961,7 +971,7 @@ export function ProfilePageContent() {
                     planType === 'premium'
                       ? 'bg-[#1A2B4C]'
                       : planType === 'pro'
-                        ? 'bg-[#00C1B2]'
+                        ? 'bg-[#00736C]'
                         : 'bg-[#1A2B4C]/80';
 
                   return (

@@ -205,7 +205,7 @@ export function DashboardTour({ role, onFinish }: DashboardTourProps) {
             <button
               type="button"
               onClick={handleSkip}
-              className="ml-4 text-xs sm:text-sm text-gray-400 hover:text-gray-600"
+              className="ml-4 text-xs sm:text-sm text-gray-600 hover:text-gray-600"
             >
               Lewati
             </button>

@@ -349,7 +349,7 @@ export default function AdminAnalyticsPage() {
                   <Metric
                     value={`${analytics.growth.users.growth_percentage >= 0 ? '+' : ''}${analytics.growth.users.growth_percentage.toFixed(1)}%`}
                     onClick={() => openDetail({ metric: 'users_this_month' })}
-                    className={`font-semibold ${analytics.growth.users.growth_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                    className={`font-semibold ${analytics.growth.users.growth_percentage >= 0 ? 'text-green-700' : 'text-red-600'}`}
                   />
                 </div>
                 <div className="flex justify-between">
@@ -357,7 +357,7 @@ export default function AdminAnalyticsPage() {
                   <Metric
                     value={`${analytics.growth.logs.growth_percentage >= 0 ? '+' : ''}${analytics.growth.logs.growth_percentage.toFixed(1)}%`}
                     onClick={() => openDetail({ metric: 'logs_this_month' })}
-                    className={`font-semibold ${analytics.growth.logs.growth_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                    className={`font-semibold ${analytics.growth.logs.growth_percentage >= 0 ? 'text-green-700' : 'text-red-600'}`}
                   />
                 </div>
               </div>

@@ -180,7 +180,7 @@ export function RegisterPageContent() {
       subtitle={
         <>
           Sudah punya akun?{' '}
-          <Link href="/login" className="font-semibold text-gradion-teal hover:text-gradion-teal-hover">
+          <Link href="/login" className="font-semibold text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover">
             Masuk di sini
           </Link>
         </>
@@ -290,7 +290,7 @@ export function RegisterPageContent() {
             type="checkbox"
             checked={agreedToPrivacy}
             onChange={(e) => setAgreedToPrivacy(e.target.checked)}
-            className="mt-1 h-4 w-4 rounded border-gradion-grey text-gradion-teal focus:ring-gradion-teal"
+            className="mt-1 h-4 w-4 rounded border-gradion-grey text-gradion-teal-strong focus:ring-gradion-teal"
             required
           />
           <label htmlFor="privacy-agreement" className="text-sm text-gradion-navy/70 cursor-pointer">
@@ -299,7 +299,7 @@ export function RegisterPageContent() {
               href="/cms/privacy"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-semibold text-gradion-teal hover:text-gradion-teal-hover underline"
+              className="font-semibold text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover underline"
               onClick={(e) => e.stopPropagation()}
             >
               Kebijakan Privasi
@@ -329,7 +329,7 @@ export function RegisterPageContent() {
 
         <p className="text-center text-sm text-gradion-navy/55">
           Email sudah diverifikasi?{' '}
-          <Link href="/login" className="font-medium text-gradion-teal hover:text-gradion-teal-hover">
+          <Link href="/login" className="font-medium text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover">
             Masuk di sini
           </Link>
         </p>

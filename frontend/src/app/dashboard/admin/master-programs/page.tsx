@@ -559,13 +559,13 @@ export default function AdminMasterProgramsPage() {
                               {isId ? 'Skor' : 'Score'}: {r.practice.score_pct}%
                             </span>
                           ) : (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500">
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
                               {isId ? 'Belum ada skor' : 'No score yet'}
                             </span>
                           )}
                         </div>
                       </div>
-                      <span className="text-gray-400 text-sm shrink-0" aria-hidden>
+                      <span className="text-gray-600 text-sm shrink-0" aria-hidden>
                         {expanded ? '▾' : '▸'}
                       </span>
                     </button>

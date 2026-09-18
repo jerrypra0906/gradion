@@ -141,11 +141,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       case 'admin':
         return 'bg-[#FFB900]/15 text-[#1A2B4C] border border-[#FFB900]/30';
       case 'therapist':
-        return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+        return 'bg-[#00C1B2]/10 text-[#00736C] border border-[#00C1B2]/25';
       case 'consultant':
         return 'bg-[#1A2B4C]/8 text-[#1A2B4C] border border-[#1A2B4C]/15';
       case 'parent':
-        return 'bg-[#00C1B2]/10 text-[#00A896] border border-[#00C1B2]/25';
+        return 'bg-[#00C1B2]/10 text-[#00736C] border border-[#00C1B2]/25';
       default:
         return 'bg-[#E5E8EB] text-[#1A2B4C]/70 border border-[#E5E8EB]';
     }
@@ -284,8 +284,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                                     className={cn(
                                       'block rounded-lg px-3 py-2 text-sm transition-colors',
                                       isAdminPathActive(item.href)
-                                        ? 'bg-[#00C1B2]/10 font-semibold text-[#00A896]'
-                                        : 'text-[#1A2B4C]/80 hover:bg-[#FDF8F1] hover:text-[#00A896]',
+                                        ? 'bg-[#00C1B2]/10 font-semibold text-[#00736C]'
+                                        : 'text-[#1A2B4C]/80 hover:bg-[#FDF8F1] hover:text-[#00736C]',
                                     )}
                                     onClick={() => setAdminMenuOpen(false)}
                                   >
@@ -322,7 +322,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <LanguageSwitcher />
               <button
                 type="button"
-                className="inline-flex items-center justify-center p-2 rounded-md text-[#1A2B4C]/55 hover:text-[#1A2B4C] hover:bg-[#FDF8F1] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#00C1B2]/40"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center p-2 rounded-md text-[#1A2B4C]/55 hover:text-[#1A2B4C] hover:bg-[#FDF8F1] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#00C1B2]/40"
                 aria-controls="mobile-menu"
                 aria-expanded={mobileMenuOpen}
                 onClick={() => setMobileMenuOpen((open) => !open)}

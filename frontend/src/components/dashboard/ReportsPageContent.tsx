@@ -441,7 +441,7 @@ export function ReportsPageContent() {
                         }
                       >
                         {copiedSection === 'all' ? (
-                          <Check className="h-4 w-4 text-[#00A896]" aria-hidden />
+                          <Check className="h-4 w-4 text-[#00736C]" aria-hidden />
                         ) : (
                           <Copy className="h-4 w-4" aria-hidden />
                         )}
@@ -471,7 +471,7 @@ export function ReportsPageContent() {
                           className="inline-flex items-center gap-1.5 rounded-lg border border-[#E5E8EB] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1A2B4C]/70 hover:bg-[#FDF8F1]"
                         >
                           {copiedSection === 'summary' ? (
-                            <Check className="h-3.5 w-3.5 text-[#00A896]" aria-hidden />
+                            <Check className="h-3.5 w-3.5 text-[#00736C]" aria-hidden />
                           ) : (
                             <Copy className="h-3.5 w-3.5" aria-hidden />
                           )}
@@ -500,7 +500,7 @@ export function ReportsPageContent() {
                           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E5E8EB] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1A2B4C]/70 hover:bg-[#FDF8F1]"
                         >
                           {copiedSection === 'rec' ? (
-                            <Check className="h-3.5 w-3.5 text-[#00A896]" aria-hidden />
+                            <Check className="h-3.5 w-3.5 text-[#00736C]" aria-hidden />
                           ) : (
                             <Copy className="h-3.5 w-3.5" aria-hidden />
                           )}
@@ -616,7 +616,7 @@ export function ReportsPageContent() {
               action={
                 <Link
                   href="/dashboard/logs"
-                  className="text-sm font-semibold text-[#00C1B2] hover:text-[#00A896] transition-colors"
+                  className="text-sm font-semibold text-[#00736C] hover:text-[#005E58] transition-colors"
                 >
                   {t('viewAllLogs')}
                 </Link>
@@ -676,7 +676,7 @@ export function ReportsPageContent() {
                         />
                         {log.therapist_comment && (
                           <div className="mt-2 rounded-lg border border-[#00C1B2]/20 bg-[#00C1B2]/5 p-2">
-                            <p className="text-xs font-medium text-[#00A896]">Review Comment:</p>
+                            <p className="text-xs font-medium text-[#00736C]">Review Comment:</p>
                             <p className="text-sm text-[#1A2B4C]/80">{log.therapist_comment}</p>
                           </div>
                         )}

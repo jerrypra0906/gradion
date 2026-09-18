@@ -22,8 +22,8 @@ const accentStyles = {
   },
   gold: {
     iconBg: 'bg-[#FFB900]/15',
-    icon: 'text-[#FFB900]',
-    value: 'text-[#FFB900]',
+    icon: 'text-[#8A6100]',
+    value: 'text-[#8A6100]',
   },
   navy: {
     iconBg: 'bg-[#1A2B4C]/8',
@@ -51,7 +51,7 @@ export function DashboardStatCard({
         </div>
         {href ? (
           <ChevronRight
-            className="w-5 h-5 text-[#1A2B4C]/25 group-hover:text-[#00C1B2] transition-colors flex-shrink-0 mt-1"
+            className="w-5 h-5 text-[#1A2B4C]/25 group-hover:text-[#005E58] transition-colors flex-shrink-0 mt-1"
             aria-hidden
           />
         ) : (

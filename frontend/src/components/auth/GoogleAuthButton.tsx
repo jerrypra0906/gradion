@@ -70,7 +70,7 @@ export function GoogleAuthButton({
                 setShowPrivacyError(false);
                 setError(null);
               }}
-              className="h-4 w-4 rounded border-gradion-grey text-gradion-teal focus:ring-gradion-teal"
+              className="h-4 w-4 rounded border-gradion-grey text-gradion-teal-strong focus:ring-gradion-teal"
             />
           </div>
           <div className="ml-3 text-sm">
@@ -80,7 +80,7 @@ export function GoogleAuthButton({
                 href="/cms/privacy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-semibold text-gradion-teal hover:text-gradion-teal-hover underline"
+                className="font-semibold text-gradion-teal-strong-strong hover:text-gradion-teal-strong-strong-hover underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 Kebijakan Privasi
