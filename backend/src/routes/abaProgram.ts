@@ -27,14 +27,55 @@ import {
 import {
   recordLearningInsightForWeek,
 } from '../services/abaProgramLearning.service.js';
-import { syncParentLogForCompletedSession } from '../services/parentLogFromAba.service.js';
 import { generateAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
 import { maybeAutoAdvanceProgram } from '../services/abaProgramAutoAdvance.service.js';
 import { computeWeekProgramProgress } from '../services/abaProgramProgress.service.js';
+import {
+  computeWeeklyExecutedHours,
+  computeWeeklyPracticeDays,
+  syncParentLogForCompletedSession,
+} from '../services/parentLogFromAba.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LOCAL_THERAPY_NOTES_DIR = path.join(__dirname, '../../uploads/therapy-notes');
+
+/** Roughly how long one day's guided practice takes, in whole minutes. */
+function estimateSessionMinutes(planJson: unknown): number | null {
+  const flow = (planJson as { daily_guided_flow?: unknown })?.daily_guided_flow;
+  if (!Array.isArray(flow)) return null;
+  for (const day of flow) {
+    const acts = (day as { activities?: unknown })?.activities;
+    if (!Array.isArray(acts) || acts.length === 0) continue;
+    const seconds = acts.reduce((sum: number, a: any) => {
+      const s = Number(a?.timer_seconds ?? a?.duration_seconds ?? 0);
+      return sum + (Number.isFinite(s) && s > 0 ? s : 300);
+    }, 0);
+    return Math.max(1, Math.round(seconds / 60));
+  }
+  return null;
+}
+
+/**
+ * The progression gate as a parent can act on it: how many more sessions the
+ * least-practised program needs, and which program that is. The thresholds
+ * themselves stay available for the "why?" disclosure.
+ */
+function describeGateRemaining(progress: ReturnType<typeof computeWeekProgramProgress> | null) {
+  if (!progress) {
+    return { sessions_to_gate: null, blocking_program_name: null, gate_mode: null };
+  }
+  const remaining = Math.max(0, progress.required_executions - progress.min_executions);
+  const blocking =
+    progress.per_program
+      .slice()
+      .sort((a, b) => a.executions - b.executions)[0]?.program_name ?? null;
+  return {
+    sessions_to_gate: remaining,
+    blocking_program_name: remaining > 0 ? blocking : null,
+    gate_mode: progress.mode,
+  };
+}
 
 /**
  * Heal program/flow drift on stored weekly plans — flow activities orphaned by
@@ -206,6 +247,102 @@ export async function abaProgramRoutes(
 ) {
   await ensureLocalTherapyNotesDir();
 
+  /**
+   * Dashboard summary for every child the caller can see: the current weekly
+   * program's per-program scores plus practice hours target vs. reality.
+   * One request so the dashboard doesn't fan out per child.
+   */
+  fastify.get(
+    '/summary',
+    {
+      preHandler: [authenticate, requireRole('parent', 'therapist', 'consultant', 'admin')],
+    },
+    async (request, reply) => {
+      try {
+        const user = (request as AuthenticatedRequest).user!;
+
+        const childWhere =
+          user.role === 'parent'
+            ? { parent_id: user.id, is_active: true }
+            : isAssignedStaff(user.role)
+              ? { is_active: true, therapistMap: { some: { therapist_id: user.id } } }
+              : { is_active: true };
+
+        const children = await prisma.child.findMany({
+          where: childWhere,
+          select: { id: true, name: true, monthly_quota: true },
+          orderBy: { created_at: 'desc' },
+          take: 12,
+        });
+        if (!children.length) {
+          return { success: true, data: { children: [] } };
+        }
+
+        const childIds = children.map((c) => c.id);
+        const weeks = await prisma.childAbaProgramWeek.findMany({
+          where: { child_id: { in: childIds } },
+          orderBy: { week_start: 'desc' },
+          include: { sessions: { orderBy: { started_at: 'desc' }, take: 50 } },
+        });
+
+        // Newest week per child is the one currently being practised.
+        const latestByChild = new Map<number, (typeof weeks)[number]>();
+        for (const w of weeks) {
+          if (!latestByChild.has(w.child_id)) latestByChild.set(w.child_id, w);
+        }
+
+        const summary = await Promise.all(
+          children.map(async (child) => {
+            const week = latestByChild.get(child.id) ?? null;
+            const hoursExecuted = await computeWeeklyExecutedHours(child.id);
+            const practiceDays = await computeWeeklyPracticeDays(child.id);
+            // Parents only see a program once an admin has approved it.
+            const gated =
+              week && user.role === 'parent' && week.review_status !== 'approved' ? null : week;
+            const progress = gated ? computeWeekProgramProgress(gated) : null;
+
+            return {
+              child_id: child.id,
+              child_name: child.name,
+              hours_target: child.monthly_quota,
+              hours_executed: Number(hoursExecuted.toFixed(2)),
+              week: gated
+                ? {
+                    id: gated.id,
+                    week_start: gated.week_start,
+                    status: gated.status,
+                    review_status: gated.review_status,
+                  }
+                : null,
+              awaiting_review: Boolean(week && !gated),
+              programs: (progress?.per_program ?? []).map((p) => ({
+                program_id: p.program_id,
+                program_name: p.program_name,
+                executions: p.executions,
+                trials: p.trials,
+                score_pct: p.score_pct,
+              })),
+              avg_score_pct: progress?.avg_score_pct ?? null,
+              // So the dashboard can say how long today's practice takes and
+              // how many sessions are left, instead of making the parent
+              // subtract two numbers out of a paragraph of thresholds.
+              session_minutes: gated ? estimateSessionMinutes(gated.plan_json) : null,
+              /** Mon…Sun: which days this week already have a completed session. */
+              practice_days: practiceDays,
+              ...describeGateRemaining(progress),
+            };
+          })
+        );
+
+        return { success: true, data: { children: summary } };
+      } catch (error: unknown) {
+        logger.error({ err: error }, 'Failed to build ABA dashboard summary');
+        reply.code(500);
+        return { success: false, error: formatErrorMessage(error, 'Failed to load summary') };
+      }
+    }
+  );
+
   fastify.get(
     '/children/:childId/weeks',
     {
@@ -240,11 +377,29 @@ export async function abaProgramRoutes(
         // guided mode always has activities for every program card.
         const { weeks: healedWeeks } = await healWeekPlans(weeks);
 
+        // Serve the reader's language when we already hold a translation.
+        //
+        // The plan is stored in whichever language it was generated in, and the
+        // cached translations sit in plan_json_i18n. Only the child page used to
+        // reconcile that, so a parent reading Indonesian who went straight to
+        // the weekly program or the guided session got English program names,
+        // targets and steps. This is a free, read-only swap; producing a missing
+        // translation still goes through the explicit /translate endpoint.
+        const requestedLang: 'en' | 'id' =
+          (request.query as { lang?: string } | undefined)?.lang === 'id' ? 'id' : 'en';
+        const localizedWeeks = healedWeeks.map((w) => {
+          const plan = w.plan_json as { language?: string } | null;
+          if (!plan || plan.language === requestedLang) return w;
+          const cache = w.plan_json_i18n as Record<string, unknown> | null;
+          const cached = cache && typeof cache === 'object' ? cache[requestedLang] : null;
+          return cached ? { ...w, plan_json: cached as typeof w.plan_json } : w;
+        });
+
         // Overlay the latest master-library teaching fields so admin edits to a
         // program (Langkah/Prompts/Mastery Criteria) show up on already-generated
         // plans. Progress is computed from the original snapshot (ids unchanged).
-        const overlaidPlans = await overlayMasterTeachingFields(healedWeeks.map((w) => w.plan_json));
-        const withProgress = healedWeeks.map((w, i) => ({
+        const overlaidPlans = await overlayMasterTeachingFields(localizedWeeks.map((w) => w.plan_json));
+        const withProgress = localizedWeeks.map((w, i) => ({
           ...w,
           plan_json: overlaidPlans[i],
           program_progress: computeWeekProgramProgress(w),
@@ -594,6 +749,73 @@ export async function abaProgramRoutes(
         logger.error({ err: error }, 'Failed to complete guided ABA session');
         reply.code(500);
         return { success: false, error: formatErrorMessage(error, 'Failed to save results') };
+      }
+    }
+  );
+
+  /**
+   * Save partial guided results without completing the session.
+   *
+   * Results used to exist only in the browser until the very last task was
+   * finished, so a locked phone, a meltdown or a closed tab threw away
+   * everything the family had just done — and the interrupted session is the
+   * likely one. The guided page now writes here after each trial, and reads it
+   * back to resume.
+   */
+  fastify.post(
+    '/children/:childId/weeks/:weekId/sessions/:sessionId/save-guided-progress',
+    {
+      preHandler: [authenticate, requireRole('parent', 'therapist', 'consultant', 'admin')],
+    },
+    async (request, reply) => {
+      try {
+        const user = (request as AuthenticatedRequest).user!;
+        const childId = parseInt((request.params as any).childId, 10);
+        const weekId = parseInt((request.params as any).weekId, 10);
+        const sessionId = parseInt((request.params as any).sessionId, 10);
+        if (Number.isNaN(childId) || Number.isNaN(weekId) || Number.isNaN(sessionId)) {
+          reply.code(400);
+          return { success: false, error: 'Invalid id' };
+        }
+        if (!(await canAccessChild(user, childId))) {
+          reply.code(403);
+          return { success: false, error: 'Forbidden' };
+        }
+
+        const body = (request.body || {}) as { results?: unknown };
+        if (body.results === undefined || body.results === null) {
+          reply.code(400);
+          return { success: false, error: 'results is required' };
+        }
+
+        const session = await prisma.childAbaProgramSession.findFirst({
+          where: { id: sessionId, week_id: weekId, user_id: user.id },
+          include: { week: true },
+        });
+        if (!session || session.week.child_id !== childId) {
+          reply.code(404);
+          return { success: false, error: 'Session not found' };
+        }
+        if (session.mode !== 'guided') {
+          reply.code(400);
+          return { success: false, error: 'Session is not guided mode' };
+        }
+        // A completed session is final; autosaves arriving late must not
+        // reopen it or overwrite what was submitted.
+        if (session.status !== 'in_progress') {
+          return { success: true, data: { saved: false, status: session.status } };
+        }
+
+        await prisma.childAbaProgramSession.update({
+          where: { id: session.id },
+          data: { guided_results_json: body.results as any },
+        });
+
+        return { success: true, data: { saved: true } };
+      } catch (error: unknown) {
+        logger.error({ err: error }, 'Failed to save guided ABA progress');
+        reply.code(500);
+        return { success: false, error: formatErrorMessage(error, 'Failed to save progress') };
       }
     }
   );

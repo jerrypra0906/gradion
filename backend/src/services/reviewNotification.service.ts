@@ -84,3 +84,59 @@ export async function notifyAdminsOfPendingAiContent(input: {
     logger.error({ err, childId: input.childId }, 'notifyAdminsOfPendingAiContent failed');
   }
 }
+
+/**
+ * Tell the parent their child's program cleared clinical review and can be
+ * run now. The child page promises this email while the three post-observation
+ * waits are running; approval is the end of that wait, and without a message
+ * the parent has no way to know except by opening the app and checking.
+ *
+ * Best-effort: never throws. Fire-and-forget so review is never blocked.
+ */
+export async function notifyParentOfApprovedContent(input: {
+  kind: PendingContentKind;
+  childId: number;
+}): Promise<void> {
+  try {
+    if (!getEmailDeliveryStatus().configured) return;
+
+    const child = await prisma.child.findUnique({
+      where: { id: input.childId },
+      select: { name: true, parent: { select: { name: true, email: true } } },
+    });
+    const email = child?.parent?.email?.trim();
+    if (!child || !email) return;
+
+    const childUrl = `${config.frontendUrl}/dashboard/children/${input.childId}`;
+    const isProgram = input.kind === 'weekly_program';
+    const headline = isProgram
+      ? `Program rumah mingguan ${child.name} sudah siap dijalankan`
+      : `Laporan asesmen ${child.name} sudah siap dibaca`;
+    const body = isProgram
+      ? 'Tim klinis Gradion sudah memeriksa programnya. Anda bisa mulai latihan hari ini — panduannya ada langkah demi langkah di halaman ananda.'
+      : 'Tim klinis Gradion sudah memeriksa laporannya. Program rumah mingguan akan menyusul.';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #00A896;">${headline}</h2>
+        <p>Halo ${child.parent?.name || 'Ayah/Bunda'},</p>
+        <p>${body}</p>
+        <p>
+          <a href="${childUrl}"
+             style="background-color: #00C1B2; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; margin: 8px 0;">
+            ${isProgram ? 'Mulai latihan' : 'Lihat halaman ananda'}
+          </a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+          Recovery is possible 💚 — Email otomatis dari Gradion.
+        </p>
+      </div>
+    `;
+
+    const emailService = new EmailService();
+    await emailService.sendEmail({ to: email, subject: headline, html });
+    logger.info({ childId: input.childId, kind: input.kind }, 'Sent parent content-approved email');
+  } catch (err) {
+    logger.warn({ err, childId: input.childId }, 'Failed to send content-approved email');
+  }
+}

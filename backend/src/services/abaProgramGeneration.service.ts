@@ -45,9 +45,13 @@ export type GenerateAbaWeekResult =
   | { ok: false; error: string; code?: number; skipped?: boolean };
 
 /**
- * Generate (or refresh) a weekly ABA plan for a child.
- * Used by the ABA API route and auto-chained after initial assessment creation.
+ * Generations already running, keyed by child + week start. Creating a child
+ * kicks off a background generation while the child page also backfills on
+ * load; without this guard both ran and each burned ~13k AI tokens writing the
+ * same week.
  */
+const generationInFlight = new Set<string>();
+
 export async function generateAbaWeekForChild(input: {
   childId: number;
   userId: number;
@@ -56,6 +60,39 @@ export async function generateAbaWeekForChild(input: {
   /** Admins may start a new program before the progress thresholds are met. */
   bypassProgressGate?: boolean;
   /** Origin marker stored on the week, e.g. 'auto_progress_gate'. */
+  generatedBy?: string;
+}): Promise<GenerateAbaWeekResult> {
+  const inFlightKey = `${input.childId}:${input.weekStartYmd}`;
+  if (generationInFlight.has(inFlightKey)) {
+    logger.info(
+      { childId: input.childId, weekStart: input.weekStartYmd },
+      'Weekly program already being generated — ignoring duplicate request'
+    );
+    return {
+      ok: false,
+      error: 'A weekly program is already being generated for this child. Please wait a moment.',
+      code: 409,
+      skipped: true,
+    };
+  }
+  generationInFlight.add(inFlightKey);
+  try {
+    return await generateAbaWeekForChildInner(input);
+  } finally {
+    generationInFlight.delete(inFlightKey);
+  }
+}
+
+/**
+ * Generate (or refresh) a weekly ABA plan for a child.
+ * Used by the ABA API route and auto-chained after initial assessment creation.
+ */
+async function generateAbaWeekForChildInner(input: {
+  childId: number;
+  userId: number;
+  weekStartYmd: string;
+  lang: 'en' | 'id';
+  bypassProgressGate?: boolean;
   generatedBy?: string;
 }): Promise<GenerateAbaWeekResult> {
   if (!config.features.ai) {

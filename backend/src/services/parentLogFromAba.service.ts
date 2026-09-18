@@ -353,6 +353,40 @@ export async function computeWeeklyExecutedHours(childId: number, refDate = new 
   return Math.round((totalSeconds / 3600) * 100) / 100;
 }
 
+/**
+ * Which days of the current week (Mon…Sun) the child actually practised.
+ *
+ * The dashboard says "Minggu ini kamu latihan 4 dari 5 hari" with a day strip;
+ * a total in hours cannot answer "did we practise today?", which is the thing
+ * a parent is really checking.
+ */
+export async function computeWeeklyPracticeDays(
+  childId: number,
+  refDate = new Date()
+): Promise<boolean[]> {
+  const weekStart = mondayWeekStart(refDate);
+  const weekEnd = nextMonday(refDate);
+
+  const sessions = await prisma.childAbaProgramSession.findMany({
+    where: {
+      status: 'completed',
+      completed_at: { gte: weekStart, lt: weekEnd },
+      week: { child_id: childId },
+    },
+    select: { completed_at: true },
+  });
+
+  const days = [false, false, false, false, false, false, false];
+  for (const s of sessions) {
+    if (!s.completed_at) continue;
+    const diffDays = Math.floor(
+      (new Date(s.completed_at).getTime() - weekStart.getTime()) / 86400000
+    );
+    if (diffDays >= 0 && diffDays < 7) days[diffDays] = true;
+  }
+  return days;
+}
+
 export async function createParentLogFromAbaSession(input: {
   sessionId: number;
   child: Child;

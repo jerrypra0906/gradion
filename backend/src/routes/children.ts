@@ -309,6 +309,42 @@ export async function childrenRoutes(
         _sum: { tokens: true },
       });
 
+      // Why AI content may be missing. Generation runs in the background after
+      // child creation, so a lapsed subscription or exhausted quota otherwise
+      // leaves the parent staring at an empty page with no explanation.
+      // Computed live so it clears itself the moment the account is renewed.
+      const hasAssessment = Boolean(
+        child.initial_assessment_report || child.initial_assessment_report_id
+      );
+      let aiAvailability: { available: boolean; reason: string | null } = {
+        available: true,
+        reason: null,
+      };
+      if (!hasAssessment) {
+        if (!config.features.ai) {
+          aiAvailability = { available: false, reason: 'AI features are currently disabled.' };
+        } else {
+          const access = await hasAIAccess(child.parent_id);
+          if (!access.hasAccess) {
+            aiAvailability = {
+              available: false,
+              reason: access.reason || 'AI features require an active subscription.',
+            };
+          } else {
+            const quota = await checkTokenQuota(
+              child.parent_id,
+              INITIAL_ASSESSMENT_TOKEN_ESTIMATE
+            );
+            if (!quota.hasQuota) {
+              aiAvailability = {
+                available: false,
+                reason: quota.reason || 'Insufficient AI tokens to generate the report.',
+              };
+            }
+          }
+        }
+      }
+
       return {
         success: true,
         data: {
@@ -316,6 +352,7 @@ export async function childrenRoutes(
           therapists,
           weekly_hours_executed,
           ai_tokens_used: tokenUsage._sum.tokens ?? 0,
+          ai_availability: aiAvailability,
         },
       };
     }

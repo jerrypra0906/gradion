@@ -18,6 +18,7 @@ import {
 import { healWeekPlans } from './abaProgram.js';
 import { getEngagementReport, getErrorReport } from '../services/analytics.service.js';
 import { UserService } from '../services/user.service.js';
+import { notifyParentOfApprovedContent } from '../services/reviewNotification.service.js';
 import { Role } from '../types/index.js';
 
 export async function adminRoutes(
@@ -1700,6 +1701,10 @@ export async function adminRoutes(
           assessment_reviewed_by: user.id,
         },
       });
+      // The child page tells the parent we will email them when the wait ends.
+      if (decision === 'approved') {
+        void notifyParentOfApprovedContent({ kind: 'assessment', childId });
+      }
       return { success: true, data: { child_id: updated.id, review_status: updated.assessment_review_status } };
     }
   );
@@ -1786,6 +1791,12 @@ export async function adminRoutes(
           reviewed_by: user.id,
         },
       });
+      if (decision === 'approved') {
+        void notifyParentOfApprovedContent({
+          kind: 'weekly_program',
+          childId: updated.child_id,
+        });
+      }
       return { success: true, data: { week_id: updated.id, review_status: updated.review_status } };
     }
   );

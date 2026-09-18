@@ -22,7 +22,9 @@ Rules:
 - Translate only human-facing strings (titles, rationale, targets, steps, materials, coaching text, hints).
 - Keep symbols and tokens unchanged (+, -, p).
 - Keep demo_video_url and video_url exactly as in the input (do not translate or alter URLs).
-- Ensure output is valid JSON.`;
+- Ensure output is valid JSON.
+- Return MINIFIED JSON on a single line: no pretty-printing, no newlines between
+  keys, no indentation. Pretty-printed output doubles the size and gets cut off.`;
 
   const user = `Translate this plan JSON to language: ${input.toLanguage}.
 
@@ -33,10 +35,11 @@ ${JSON.stringify(input.fromPlanJson)}
   const out = await generateStructuredJsonFromPrompt({
     systemInstruction: system,
     userText: user,
-    // A full plan (programs + 5-day guided flow) does not fit in ~1400 tokens;
-    // a too-small cap makes the model drop flow entries to fit, which strands
-    // programs without guided activities.
-    maxOutputTokens: 6000,
+    // A translation is at least as large as the plan it translates, so this
+    // matches the generation cap. At 6000 a full plan truncated mid-JSON
+    // ("Model JSON output failed to parse", textLength 16315) and burned a
+    // call before the retry rescued it.
+    maxOutputTokens: 8000,
     temperature: 0,
   });
   if (!out) return null;
