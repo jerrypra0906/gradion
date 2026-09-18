@@ -1,3 +1,5 @@
+'use client';
+
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import {
@@ -8,6 +10,7 @@ import {
   Shield,
   Users,
 } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface FeatureGridSectionProps {
   cmsContent: CMSContent | null;
@@ -25,7 +28,8 @@ const featureColors = [
 ];
 
 export function FeatureGridSection({ cmsContent, loading }: FeatureGridSectionProps) {
-  const content = parseLandingSection('features', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('features', cmsContent, language);
 
   return (
     <section className="py-20 bg-white" id="features">

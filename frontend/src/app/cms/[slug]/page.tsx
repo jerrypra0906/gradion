@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { apiClient, ApiResponse, CMSContent } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from '@/hooks/useTranslation';
 import { Button } from '@/components/ui/Button';
 import { ResponsiveAd } from '@/components/ads';
 import { siteUrl, siteName } from '@/lib/site';
@@ -14,6 +15,7 @@ export default function CMSPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
+  const { language } = useTranslation();
   const [content, setContent] = useState<CMSContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,7 +25,8 @@ export default function CMSPage() {
     if (params.slug) {
       fetchContent();
     }
-  }, [params.slug]);
+    // Refetch so switching language re-reads the copy in that language.
+  }, [params.slug, language]);
 
   // Update document head for SEO
   useEffect(() => {
@@ -77,7 +80,7 @@ export default function CMSPage() {
     try {
       setLoading(true);
       setError('');
-      const response = await apiClient.get<ApiResponse<CMSContent>>(`/cms/${params.slug}`);
+      const response = await apiClient.get<ApiResponse<CMSContent>>(`/cms/${params.slug}?lang=${language === 'id' ? 'id' : 'en'}`);
       if (response.data.success && response.data.data) {
         const rawHtml = response.data.data.content_html || '';
         

@@ -8,6 +8,7 @@ import {
   parseLandingSection,
   PricingPlanContent,
 } from '@/lib/landingCms';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface AvailablePlan {
   weeks: number;
@@ -85,7 +86,8 @@ export function PricingSection({
   isAuthenticated,
   cmsContent,
 }: PricingSectionProps) {
-  const content = parseLandingSection('pricing', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('pricing', cmsContent, language);
 
   const renderFeatures = (plan: PricingPlanContent, tokenLimit?: number) =>
     plan.features.map((feature) => {
@@ -136,7 +138,7 @@ export function PricingSection({
                   } ${isHighlighted ? 'relative shadow-xl md:-mt-2 md:mb-2' : ''}`}
                 >
                   {plan.badge ? (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#00C1B2] text-white text-xs font-bold px-4 py-1 rounded-full">
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#00736C] text-white text-xs font-bold px-4 py-1 rounded-full">
                       {plan.badge}
                     </div>
                   ) : null}
@@ -171,7 +173,7 @@ export function PricingSection({
                         isLight
                           ? 'border-2 border-[#1A2B4C] text-[#1A2B4C] hover:bg-[#1A2B4C] hover:text-white'
                           : isHighlighted
-                            ? 'bg-[#00C1B2] text-white hover:bg-[#00A896]'
+                            ? 'bg-[#00736C] text-white hover:bg-[#005E58]'
                             : 'border border-white/40 text-white hover:bg-white/10'
                       }`}
                     >
@@ -182,7 +184,7 @@ export function PricingSection({
                       href={checkoutHref}
                       className={`block w-full text-center py-3 rounded-full font-semibold transition-colors ${
                         isHighlighted
-                          ? 'bg-[#00C1B2] text-white hover:bg-[#00A896]'
+                          ? 'bg-[#00736C] text-white hover:bg-[#005E58]'
                           : 'border border-white/40 text-white hover:bg-white/10'
                       }`}
                     >

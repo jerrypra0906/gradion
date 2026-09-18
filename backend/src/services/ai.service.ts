@@ -218,6 +218,18 @@ async function generateTextOpenAI(
   }
 }
 
+/**
+ * Plain-text generation (no JSON parsing), exported for translation work where
+ * the payload is HTML or must round-trip byte-for-byte apart from the words.
+ */
+export async function generateTranslationText(
+  systemPrompt: string,
+  userPrompt: string,
+  options: { maxTokens: number; temperature: number }
+): Promise<{ text: string; tokensUsed: number; truncated?: boolean } | null> {
+  return generateTextClaude(systemPrompt, userPrompt, options);
+}
+
 async function generateTextClaude(
   systemPrompt: string,
   userPrompt: string,

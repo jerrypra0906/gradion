@@ -1,6 +1,9 @@
+'use client';
+
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { Heart, Sparkles, Users } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface FamilyValueSectionProps {
   cmsContent: CMSContent | null;
@@ -14,7 +17,8 @@ const cardStyles = [
 ];
 
 export function FamilyValueSection({ cmsContent, loading }: FamilyValueSectionProps) {
-  const content = parseLandingSection('why-different', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('why-different', cmsContent, language);
 
   return (
     <section className="py-20 bg-[#FDF8F1]">

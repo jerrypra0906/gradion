@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { ArrowRight } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface StepsSectionProps {
   cmsContent: CMSContent | null;
@@ -9,7 +12,8 @@ interface StepsSectionProps {
 }
 
 export function StepsSection({ cmsContent, loading }: StepsSectionProps) {
-  const content = parseLandingSection('steps', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('steps', cmsContent, language);
 
   return (
     <section className="py-20 bg-white">
@@ -26,7 +30,7 @@ export function StepsSection({ cmsContent, loading }: StepsSectionProps) {
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           {content.steps.map((item, index) => (
             <div key={`${item.title}-${index}`} className="text-center">
-              <div className="w-14 h-14 rounded-full bg-[#00C1B2] text-white font-bold text-xl flex items-center justify-center mx-auto mb-5">
+              <div className="w-14 h-14 rounded-full bg-[#00736C] text-white font-bold text-xl flex items-center justify-center mx-auto mb-5">
                 {index + 1}
               </div>
               <h3 className="text-lg font-bold text-[#1A2B4C] mb-2">{item.title}</h3>
@@ -38,7 +42,7 @@ export function StepsSection({ cmsContent, loading }: StepsSectionProps) {
         <div className="text-center mt-12">
           <Link
             href={content.cta.href}
-            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-[#00C1B2] text-white font-semibold hover:bg-[#00A896] transition-colors"
+            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-[#00736C] text-white font-semibold hover:bg-[#005E58] transition-colors"
           >
             {content.cta.label}
             <ArrowRight className="w-4 h-4" />

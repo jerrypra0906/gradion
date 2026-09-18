@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { CMSStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, requireRole, AuthenticatedRequest } from '../middleware/auth.js';
+import {
+  backfillCmsTranslations,
+  localizeCmsRow,
+  localizeCmsRows,
+  normalizeCmsLang,
+} from '../services/cmsTranslation.service.js';
 
 const cmsStatusEnum = z.nativeEnum(CMSStatus);
 
@@ -27,6 +33,8 @@ const cmsCreateSchema = z.object({
   title: z.string().min(3),
   slug: z.string().min(1).optional(),
   content_html: z.string().min(1),
+  /** Language the admin wrote this in; the other one is machine-translated. */
+  source_lang: z.enum(['en', 'id']).optional(),
   status: cmsStatusEnum.default('draft'),
   publish_at: z.string().datetime().nullable().optional(),
   unpublish_at: z.string().datetime().nullable().optional(),
@@ -136,10 +144,11 @@ export async function cmsRoutes(
     }
   );
 
-  // Public list
+  // Public list — served in the reader's language when a translation is cached.
   fastify.get('/', async (request) => {
     const query = publicListQuerySchema.parse(request.query);
     const limit = query.limit ? Math.min(parseInt(query.limit, 10), 50) : 20;
+    const lang = normalizeCmsLang((request.query as { lang?: string } | undefined)?.lang);
 
     const contents = await prisma.cMSContent.findMany({
       where: getPublishedWhereClause(),
@@ -152,7 +161,7 @@ export async function cmsRoutes(
 
     return {
       success: true,
-      data: contents,
+      data: await localizeCmsRows(contents, lang),
     };
   });
 
@@ -171,9 +180,12 @@ export async function cmsRoutes(
       return { success: false, error: 'Content not found' };
     }
 
+    // A single page is worth translating on demand when the cache is cold:
+    // it is one row, and the reader is looking at it right now.
+    const lang = normalizeCmsLang((request.query as { lang?: string } | undefined)?.lang);
     return {
       success: true,
-      data: content,
+      data: await localizeCmsRow(content, lang, { translateMissing: true }),
     };
   });
 
@@ -212,8 +224,12 @@ export async function cmsRoutes(
             publish_at: publishAt,
             unpublish_at: unpublishAt,
             banner_id: body.banner_id ?? null,
+            source_lang: normalizeCmsLang(body.source_lang),
           },
         });
+
+        // Produce the other language in the background.
+        void backfillCmsTranslations({ slug: content.slug, limit: 1 });
 
         fastify.log.info(
           { contentId: content.id, userId: user.id },
@@ -291,10 +307,25 @@ export async function cmsRoutes(
           updateData.slug = sanitizedSlug;
         }
 
+        // Editing the copy invalidates its translation; the admin may also be
+        // switching which language they author in.
+        if (body.content_html !== undefined || body.title !== undefined) {
+          updateData.content_i18n = null;
+        }
+        if (body.source_lang !== undefined) {
+          updateData.source_lang = normalizeCmsLang(body.source_lang);
+          updateData.content_i18n = null;
+        }
+
         const content = await prisma.cMSContent.update({
           where: { id: contentId },
           data: updateData,
         });
+
+        // Warm the other language so the next reader does not wait on the AI.
+        if (updateData.content_i18n === null) {
+          void backfillCmsTranslations({ slug: content.slug, limit: 1 });
+        }
 
         return {
           success: true,

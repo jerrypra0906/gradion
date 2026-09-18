@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Footer } from '@/components/layout/Footer';
 import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from '@/hooks/useTranslation';
 import { apiClient, ApiResponse, CMSContent } from '@/lib/api';
 
 // Only import DOMPurify on client side
@@ -122,18 +123,20 @@ const DEFAULT_CONTENT_HTML = `
 
 export default function PrivacyPolicyPage() {
   const { isAuthenticated } = useAuthStore();
+  const { language } = useTranslation();
   const [cmsContent, setCmsContent] = useState<CMSContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [sanitizedHtml, setSanitizedHtml] = useState('');
 
   useEffect(() => {
     fetchCMSContent();
-  }, []);
+    // Refetch so switching language re-reads the copy in that language.
+  }, [language]);
 
   const fetchCMSContent = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<ApiResponse<CMSContent>>('/cms/privacy').catch(() => null);
+      const response = await apiClient.get<ApiResponse<CMSContent>>(`/cms/privacy?lang=${language === 'id' ? 'id' : 'en'}`).catch(() => null);
       if (response?.data.success && response.data.data) {
         const rawHtml = response.data.data.content_html || '';
         const cleanHtml = DOMPurify ? DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }) : rawHtml;
@@ -154,7 +157,7 @@ export default function PrivacyPolicyPage() {
     }
   };
 
-  const displayTitle = cmsContent?.title || 'Privacy Policy';
+  const displayTitle = cmsContent?.title || (language === 'id' ? 'Kebijakan Privasi' : 'Privacy Policy');
   const displayDate = cmsContent?.updated_at
     ? new Date(cmsContent.updated_at).toLocaleDateString()
     : new Date().toLocaleDateString();
@@ -173,18 +176,18 @@ export default function PrivacyPolicyPage() {
               {isAuthenticated ? (
                 <Link href="/dashboard">
                   <Button variant="outline" size="sm">
-                    Dashboard
+                    {language === 'id' ? 'Dasbor' : 'Dashboard'}
                   </Button>
                 </Link>
               ) : (
                 <>
                   <Link href="/login">
                     <Button variant="outline" size="sm">
-                      Sign In
+                      {language === 'id' ? 'Masuk' : 'Sign In'}
                     </Button>
                   </Link>
                   <Link href="/register">
-                    <Button size="sm">Get Started</Button>
+                    <Button size="sm">{language === 'id' ? 'Mulai' : 'Get Started'}</Button>
                   </Link>
                 </>
               )}

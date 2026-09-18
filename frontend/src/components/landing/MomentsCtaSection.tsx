@@ -1,6 +1,9 @@
+'use client';
+
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { Heart } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface MomentsCtaSectionProps {
   cmsContent: CMSContent | null;
@@ -8,7 +11,8 @@ interface MomentsCtaSectionProps {
 }
 
 export function MomentsCtaSection({ cmsContent, loading }: MomentsCtaSectionProps) {
-  const content = parseLandingSection('moments-cta', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('moments-cta', cmsContent, language);
 
   return (
     <section className="bg-[#1A2B4C] text-white py-20">

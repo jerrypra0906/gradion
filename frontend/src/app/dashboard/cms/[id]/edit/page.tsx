@@ -33,6 +33,7 @@ export default function EditCMSPage() {
     unpublish_at: '',
     banner_id: '',
     content_html: '',
+    source_lang: 'en' as 'en' | 'id',
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -63,6 +64,7 @@ export default function EditCMSPage() {
           unpublish_at: toDateTimeLocal(data.unpublish_at),
           banner_id: data.banner_id ? String(data.banner_id) : '',
           content_html: data.content_html,
+          source_lang: data.source_lang ?? 'en',
         });
       } else {
         setError(response.data.error || 'Content not found');
@@ -117,6 +119,7 @@ export default function EditCMSPage() {
         slug: formData.slug.trim(),
         status: formData.status,
         content_html: formData.content_html,
+        source_lang: formData.source_lang,
       };
       payload.publish_at = formData.publish_at ? new Date(formData.publish_at).toISOString() : null;
       payload.unpublish_at = formData.unpublish_at ? new Date(formData.unpublish_at).toISOString() : null;
@@ -202,7 +205,30 @@ export default function EditCMSPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
+            {/*
+              Which language this copy is written in. The other one is produced
+              by machine translation and cached, so a reader in either language
+              sees the page in their own; editing invalidates it.
+            */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Written in
+              </label>
+              <select
+                value={formData.source_lang}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, source_lang: e.target.value as 'en' | 'id' }))
+                }
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="en">English</option>
+                <option value="id">Bahasa Indonesia</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-600">
+                The other language is translated automatically.
+              </p>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
               <select

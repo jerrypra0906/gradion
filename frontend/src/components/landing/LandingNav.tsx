@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { GradionLogo } from '@/components/landing/GradionLogo';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface LandingNavProps {
   cmsContent?: CMSContent | null;
@@ -9,7 +12,8 @@ interface LandingNavProps {
 }
 
 export function LandingNav({ cmsContent, loading = false }: LandingNavProps) {
-  const content = parseLandingSection('landing-nav', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('landing-nav', cmsContent, language);
 
   if (loading) {
     return (
@@ -42,7 +46,7 @@ export function LandingNav({ cmsContent, loading = false }: LandingNavProps) {
               </Link>
               <Link
                 href="/register"
-                className="inline-flex items-center px-5 py-2.5 rounded-full bg-[#00C1B2] text-white text-sm font-semibold hover:bg-[#00A896] shadow-md shadow-[#00C1B2]/20 transition-all"
+                className="inline-flex items-center px-5 py-2.5 rounded-full bg-[#00736C] text-white text-sm font-semibold hover:bg-[#005E58] shadow-md shadow-[#00736C]/20 transition-all"
               >
                 {content.registerLabel}
               </Link>
@@ -54,7 +58,7 @@ export function LandingNav({ cmsContent, loading = false }: LandingNavProps) {
               </Link>
               <Link
                 href="/register"
-                className="px-4 py-2 rounded-full bg-[#00C1B2] text-white text-sm font-semibold hover:bg-[#00A896]"
+                className="px-4 py-2 rounded-full bg-[#00736C] text-white text-sm font-semibold hover:bg-[#005E58]"
               >
                 {content.mobileRegisterLabel}
               </Link>

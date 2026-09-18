@@ -1,6 +1,9 @@
+'use client';
+
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { Quote } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface TestimonialsSectionProps {
   cmsContent: CMSContent | null;
@@ -8,7 +11,8 @@ interface TestimonialsSectionProps {
 }
 
 export function TestimonialsSection({ cmsContent, loading }: TestimonialsSectionProps) {
-  const content = parseLandingSection('success-stories', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('success-stories', cmsContent, language);
 
   return (
     <section className="py-20 bg-white">

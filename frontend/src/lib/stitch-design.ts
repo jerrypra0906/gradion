@@ -38,6 +38,13 @@ export const stitchColors = {
 
   tealHover: '#00A896',
 
+  /** Teal a step darker, for text and filled buttons on light surfaces:
+   *  white on full-strength teal is 2.27:1, this is 5.72:1. */
+  tealStrong: '#00736C',
+
+  tealStrongHover: '#005E58',
+
+
   gold: '#FFB900',
 
   grey: '#E5E8EB',

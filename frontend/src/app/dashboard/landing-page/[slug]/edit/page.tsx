@@ -44,6 +44,8 @@ export default function LandingSectionEditPage() {
     null
   );
   const [status, setStatus] = useState<CMSStatus>('draft');
+  /** Which language this section is authored in; the other is translated. */
+  const [sourceLang, setSourceLang] = useState<'en' | 'id'>('en');
   const [publishAt, setPublishAt] = useState('');
   const [unpublishAt, setUnpublishAt] = useState('');
   const [loading, setLoading] = useState(true);
@@ -77,11 +79,13 @@ export default function LandingSectionEditPage() {
       if (existing) {
         setSectionData(parseLandingSection(slug, existing));
         setStatus(existing.status);
+        setSourceLang(existing.source_lang ?? 'en');
         setPublishAt(toDateTimeLocal(existing.publish_at));
         setUnpublishAt(toDateTimeLocal(existing.unpublish_at));
       } else {
         setSectionData(getDefaultLandingSectionContent(slug));
         setStatus('draft');
+        setSourceLang('en');
         setPublishAt('');
         setUnpublishAt('');
       }
@@ -119,6 +123,7 @@ export default function LandingSectionEditPage() {
         content_html: serializeLandingSection(slug, sectionData as LandingSectionContentMap[typeof slug]),
         publish_at: publishAt ? new Date(publishAt).toISOString() : null,
         unpublish_at: unpublishAt ? new Date(unpublishAt).toISOString() : null,
+        source_lang: sourceLang,
       };
 
       if (cmsRecord) {
@@ -132,7 +137,7 @@ export default function LandingSectionEditPage() {
 
       setSuccess(
         status === 'published'
-          ? 'Section saved and published. Changes will appear on the landing page.'
+          ? 'Section saved and published. The other language is being translated automatically.'
           : 'Section saved as draft. Set status to published to show it on the landing page.'
       );
     } catch (err: unknown) {
@@ -193,7 +198,23 @@ export default function LandingSectionEditPage() {
           <div className="space-y-6">
             <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm space-y-4">
               <h2 className="text-lg font-semibold text-gray-900">Publishing</h2>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-4">
+                {/*
+                  The other language is machine-translated from this one and
+                  cached, so the landing page reads natively in both. Saving
+                  invalidates the translation and queues a fresh one.
+                */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Written in</label>
+                  <select
+                    value={sourceLang}
+                    onChange={(e) => setSourceLang(e.target.value as 'en' | 'id')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="en">English</option>
+                    <option value="id">Bahasa Indonesia</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select

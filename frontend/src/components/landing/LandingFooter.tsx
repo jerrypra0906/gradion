@@ -1,8 +1,11 @@
+'use client';
+
 import Link from 'next/link';
 import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { ArrowRight } from 'lucide-react';
 import { GradionLogo } from '@/components/landing/GradionLogo';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface LandingFooterProps {
   cmsContent?: CMSContent | null;
@@ -10,10 +13,11 @@ interface LandingFooterProps {
 }
 
 export function LandingFooter({ cmsContent = null, loading = false }: LandingFooterProps) {
-  const content = parseLandingSection('footer', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('footer', cmsContent, language);
 
   return (
-    <footer className="bg-[#1A2B4C] text-gray-400 py-16 mt-auto">
+    <footer className="bg-[#1A2B4C] text-gray-300 py-16 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-14 pb-14 border-b border-white/10">
           {loading ? (
@@ -23,7 +27,7 @@ export function LandingFooter({ cmsContent = null, loading = false }: LandingFoo
               <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">{content.ctaTitle}</h2>
               <Link
                 href={content.cta.href}
-                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-[#00C1B2] text-white font-semibold hover:bg-[#00A896] transition-colors"
+                className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-[#00736C] text-white font-semibold hover:bg-[#005E58] transition-colors"
               >
                 {content.cta.label}
                 <ArrowRight className="w-4 h-4" />
@@ -48,7 +52,7 @@ export function LandingFooter({ cmsContent = null, loading = false }: LandingFoo
               <ul className="space-y-2 text-sm">
                 {group.links.map((link) => (
                   <li key={`${group.title}-${link.href}`}>
-                    <Link href={link.href} className="hover:text-[#00C1B2] transition-colors">
+                    <Link href={link.href} className="hover:text-[#005E58] transition-colors">
                       {link.label}
                     </Link>
                   </li>

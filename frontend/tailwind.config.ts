@@ -9,11 +9,11 @@ const config: Config = {
   safelist: [
     {
       pattern:
-        /^(bg|text|border|ring|shadow)-gradion-(navy|teal|teal-hover|gold|grey|cream)(\/\d+)?$/,
+        /^(bg|text|border|ring|shadow)-gradion-(navy|teal|teal-hover|teal-strong|teal-strong-hover|gold|grey|cream)(\/\d+)?$/,
     },
     {
       pattern:
-        /^(hover|focus):(bg|text|border|ring)-gradion-(navy|teal|teal-hover)(\/\d+)?$/,
+        /^(hover|focus):(bg|text|border|ring)-gradion-(navy|teal|teal-hover|teal-strong|teal-strong-hover)(\/\d+)?$/,
     },
   ],
 
@@ -44,6 +44,11 @@ const config: Config = {
           teal: stitchColors.teal,
 
           'teal-hover': stitchColors.tealHover,
+
+          'teal-strong': stitchColors.tealStrong,
+
+          'teal-strong-hover': stitchColors.tealStrongHover,
+
 
           gold: stitchColors.gold,
 

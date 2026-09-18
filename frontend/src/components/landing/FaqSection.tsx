@@ -5,6 +5,7 @@ import { CMSContent } from '@/lib/api';
 import { parseLandingSection } from '@/lib/landingCms';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface FaqSectionProps {
   cmsContent: CMSContent | null;
@@ -12,7 +13,8 @@ interface FaqSectionProps {
 }
 
 export function FaqSection({ cmsContent, loading }: FaqSectionProps) {
-  const content = parseLandingSection('faq', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('faq', cmsContent, language);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   return (
@@ -46,7 +48,7 @@ export function FaqSection({ cmsContent, loading }: FaqSectionProps) {
                     <span className="font-semibold text-navy-900">{faq.question}</span>
                     <ChevronDown
                       className={cn(
-                        'w-5 h-5 text-gray-400 flex-shrink-0 transition-transform',
+                        'w-5 h-5 text-gray-600 flex-shrink-0 transition-transform',
                         isOpen && 'rotate-180'
                       )}
                     />

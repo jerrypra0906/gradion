@@ -11,8 +11,10 @@ import DOMPurify from 'isomorphic-dompurify';
 import { useAuthStore } from '@/store/authStore';
 import { ResponsiveAd } from '@/components/ads';
 import { siteUrl, siteName } from '@/lib/site';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function ResourcesPage() {
+  const { language } = useTranslation();
   const { isAuthenticated } = useAuthStore();
   const [resources, setResources] = useState<CMSContent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,18 +103,18 @@ export default function ResourcesPage() {
               {isAuthenticated ? (
                 <Link href="/dashboard">
                   <Button variant="outline" size="sm">
-                    Dashboard
+                    {language === 'id' ? 'Dasbor' : 'Dashboard'}
                   </Button>
                 </Link>
               ) : (
                 <>
                   <Link href="/login">
                     <Button variant="outline" size="sm">
-                      Sign In
+                      {language === 'id' ? 'Masuk' : 'Sign In'}
                     </Button>
                   </Link>
                   <Link href="/register">
-                    <Button size="sm">Get Started</Button>
+                    <Button size="sm">{language === 'id' ? 'Mulai' : 'Get Started'}</Button>
                   </Link>
                 </>
               )}
@@ -123,9 +125,13 @@ export default function ResourcesPage() {
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Knowledge Hub</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            {language === 'id' ? 'Pusat Pengetahuan' : 'Knowledge Hub'}
+          </h1>
           <p className="text-xl text-gray-600">
-            Educational articles and guides — ABA, therapy, and supporting your child&apos;s development
+            {language === 'id'
+              ? 'Artikel dan panduan edukatif — ABA, terapi, dan mendampingi perkembangan anak Anda'
+              : "Educational articles and guides — ABA, therapy, and supporting your child's development"}
           </p>
         </div>
 

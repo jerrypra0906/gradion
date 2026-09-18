@@ -222,7 +222,7 @@ export const LANDING_SECTION_DEFAULTS: LandingSectionContentMap = {
     links: [
       { href: '/#features', label: 'Fitur' },
       { href: '/#pricing', label: 'Harga' },
-      { href: '/resources', label: 'Knowledge Hub' },
+      { href: '/resources', label: 'Pusat Pengetahuan' },
     ],
     loginLabel: 'Masuk',
     registerLabel: 'Daftar Gratis',
@@ -263,7 +263,7 @@ export const LANDING_SECTION_DEFAULTS: LandingSectionContentMap = {
           'Insight perkembangan berbasis data dan ringkasan AI sesuai paket langganan.',
       },
       {
-        title: 'Knowledge Hub',
+        title: 'Pusat Pengetahuan',
         description:
           'Akses artikel edukatif dan sumber daya untuk mendukung perjalanan keluarga.',
       },
@@ -427,14 +427,14 @@ export const LANDING_SECTION_DEFAULTS: LandingSectionContentMap = {
   footer: {
     ctaTitle: 'Siap memulai perjalanan bersama Gradion?',
     cta: { label: 'Mulai Gratis Sekarang', href: '/register' },
-    tagline: 'Recovery is possible — structured ABA support for families in Indonesia.',
+    tagline: 'Recovery is possible — pendampingan ABA terstruktur untuk keluarga di Indonesia.',
     linkGroups: [
       {
         title: 'Program',
         links: [
           { href: '/#features', label: 'Fitur' },
           { href: '/#pricing', label: 'Harga' },
-          { href: '/resources', label: 'Knowledge Hub' },
+          { href: '/resources', label: 'Pusat Pengetahuan' },
         ],
       },
       {
@@ -453,7 +453,7 @@ export const LANDING_SECTION_DEFAULTS: LandingSectionContentMap = {
         ],
       },
     ],
-    copyright: `© ${new Date().getFullYear()} Gradion. All rights reserved.`,
+    copyright: `© ${new Date().getFullYear()} Gradion. Seluruh hak cipta dilindungi.`,
   },
 };
 
@@ -601,11 +601,68 @@ export function serializeLandingSection<S extends LandingSectionSlug>(
   );
 }
 
+/**
+ * English overrides for the handful of default strings that are authored in
+ * Indonesian.
+ *
+ * The defaults are Indonesian-first, because the product is. Admin-authored CMS
+ * copy is machine-translated both ways on read; these are code-owned strings,
+ * so they are simply written twice rather than sent through a model.
+ */
+const LANDING_SECTION_DEFAULTS_EN: {
+  [K in LandingSectionSlug]?: Partial<LandingSectionContentMap[K]>;
+} = {
+  'landing-nav': {
+    links: [
+      { href: '/#features', label: 'Features' },
+      { href: '/#pricing', label: 'Pricing' },
+      { href: '/resources', label: 'Knowledge Hub' },
+    ],
+    loginLabel: 'Sign In',
+    registerLabel: 'Sign Up Free',
+    mobileRegisterLabel: 'Sign Up',
+  },
+  footer: {
+    ctaTitle: 'Ready to start the journey with Gradion?',
+    cta: { label: 'Start Free Now', href: '/register' },
+    tagline: 'Recovery is possible — structured ABA support for families in Indonesia.',
+    linkGroups: [
+      {
+        title: 'Product',
+        links: [
+          { href: '/#features', label: 'Features' },
+          { href: '/#pricing', label: 'Pricing' },
+          { href: '/resources', label: 'Knowledge Hub' },
+        ],
+      },
+      {
+        title: 'More',
+        links: [
+          { href: '/#faq', label: 'FAQ' },
+          { href: '/cms/contact', label: 'Contact' },
+          { href: '/login', label: 'Sign In' },
+        ],
+      },
+      {
+        title: 'Legal',
+        links: [
+          { href: '/cms/privacy', label: 'Privacy Policy' },
+          { href: '/cms/terms', label: 'Terms of Service' },
+        ],
+      },
+    ],
+    copyright: `© ${new Date().getFullYear()} Gradion. All rights reserved.`,
+  },
+};
+
 export function parseLandingSection<S extends LandingSectionSlug>(
   slug: S,
-  cms: CMSContent | null | undefined
+  cms: CMSContent | null | undefined,
+  language: string = 'id'
 ): LandingSectionContentMap[S] {
-  const defaults = LANDING_SECTION_DEFAULTS[slug];
+  const base = LANDING_SECTION_DEFAULTS[slug];
+  const override = language === 'en' ? LANDING_SECTION_DEFAULTS_EN[slug] : undefined;
+  const defaults = (override ? mergeDeep(base, override) : base) as LandingSectionContentMap[S];
 
   if (!cms?.content_html?.trim()) {
     return defaults;

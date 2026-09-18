@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { useTranslation } from '@/hooks/useTranslation';
 import { apiClient, ApiResponse, CMSContent } from '@/lib/api';
 import { StructuredData } from '@/components/landing/StructuredData';
 import { ResponsiveAd } from '@/components/ads';
@@ -39,6 +40,7 @@ const emptyLandingCms = (): LandingCmsState =>
 export function HomePageContent() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const { language } = useTranslation();
   const [plans, setPlans] = useState<AvailablePlans | null>(null);
   const [cmsContent, setCmsContent] = useState<LandingCmsState>(emptyLandingCms);
   const [loadingPlans, setLoadingPlans] = useState(true);
@@ -47,7 +49,8 @@ export function HomePageContent() {
   useEffect(() => {
     fetchPlans();
     fetchCMSContent();
-  }, []);
+    // Refetch so switching language re-reads the copy in that language.
+  }, [language]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -74,7 +77,7 @@ export function HomePageContent() {
       setLoadingCMS(true);
       const results = await Promise.all(
         LANDING_SECTION_SLUGS.map((slug) =>
-          apiClient.get<ApiResponse<CMSContent>>(`/cms/${slug}`).catch(() => null)
+          apiClient.get<ApiResponse<CMSContent>>(`/cms/${slug}?lang=${language === 'id' ? 'id' : 'en'}`).catch(() => null)
         )
       );
 

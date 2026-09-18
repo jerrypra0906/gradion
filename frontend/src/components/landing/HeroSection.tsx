@@ -1,9 +1,12 @@
+'use client';
+
 import Link from 'next/link';
 import { CMSContent } from '@/lib/api';
 import { LandingNav } from '@/components/landing/LandingNav';
 import { HeroIllustration } from '@/components/landing/HeroIllustration';
 import { parseLandingSection } from '@/lib/landingCms';
 import { ArrowRight, Sparkles } from 'lucide-react';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface HeroSectionProps {
   cmsContent: CMSContent | null;
@@ -12,7 +15,8 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ cmsContent, navCmsContent, loading }: HeroSectionProps) {
-  const content = parseLandingSection('hero', cmsContent);
+  const { language } = useTranslation();
+  const content = parseLandingSection('hero', cmsContent, language);
 
   if (loading) {
     return (
@@ -50,7 +54,7 @@ export function HeroSection({ cmsContent, navCmsContent, loading }: HeroSectionP
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 href={content.primaryCta.href}
-                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-full bg-[#00C1B2] text-white font-semibold hover:bg-[#00A896] shadow-lg shadow-[#00C1B2]/25 transition-all hover:shadow-[#00C1B2]/35"
+                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-full bg-[#00736C] text-white font-semibold hover:bg-[#005E58] shadow-lg shadow-[#00C1B2]/25 transition-all hover:shadow-[#00C1B2]/35"
               >
                 {content.primaryCta.label}
                 <ArrowRight className="w-4 h-4" />

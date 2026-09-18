@@ -398,6 +398,12 @@ model CMSContent {
   created_at   DateTime  @default(now())
   updated_at   DateTime  @updatedAt
 
+  /// Language the admin actually wrote this in; the other one is translated.
+  source_lang  String    @default("en")
+  /// Cached machine translations keyed by language: { id: { title, content_html } }.
+  /// Cleared whenever an admin edits the row, so an edit is never served stale.
+  content_i18n Json?
+
   banner Banner? @relation(fields: [banner_id], references: [id], onDelete: SetNull)
 
   @@map("cms_content")

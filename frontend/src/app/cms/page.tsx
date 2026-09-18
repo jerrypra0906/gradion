@@ -7,8 +7,10 @@ import { apiClient, ApiResponse, CMSContent } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { siteName } from '@/lib/site';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function CMSListPage() {
+  const { language } = useTranslation();
   const { user, isAuthenticated } = useAuthStore();
   const [contents, setContents] = useState<CMSContent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,10 +107,10 @@ export default function CMSListPage() {
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/login">
-                <Button variant="outline" size="sm">Sign In</Button>
+                <Button variant="outline" size="sm">{language === 'id' ? 'Masuk' : 'Sign In'}</Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <Button size="sm">{language === 'id' ? 'Mulai' : 'Get Started'}</Button>
               </Link>
             </div>
           </div>
