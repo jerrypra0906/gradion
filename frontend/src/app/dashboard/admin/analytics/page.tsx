@@ -85,6 +85,36 @@ export default function AdminAnalyticsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
 
+  /**
+   * One date range drives the whole page.
+   *
+   * Presets cover the common questions; "Custom" exposes the two dates. An
+   * empty range means all time, which is what the page showed before.
+   */
+  const [preset, setPreset] = useState<'all' | '7' | '30' | '90' | 'custom'>('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  const rangeQuery =
+    fromDate && toDate ? `from=${fromDate}&to=${toDate}` : '';
+
+  const applyPreset = (next: typeof preset) => {
+    setPreset(next);
+    if (next === 'all') {
+      setFromDate('');
+      setToDate('');
+      return;
+    }
+    if (next === 'custom') return;
+    const days = Number(next);
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    const ymd = (d: Date) => d.toISOString().slice(0, 10);
+    setFromDate(ymd(start));
+    setToDate(ymd(end));
+  };
+
   // Product analytics: page engagement, drop-off, and captured errors.
   const [rangeDays, setRangeDays] = useState(7);
   const [engagement, setEngagement] = useState<EngagementReport | null>(null);
@@ -98,9 +128,11 @@ export default function AdminAnalyticsPage() {
       try {
         const [eng, errs] = await Promise.all([
           apiClient.get<ApiResponse<EngagementReport>>(
-            `/admin/analytics/engagement?days=${rangeDays}`,
+            `/admin/analytics/engagement?days=${rangeDays}${rangeQuery ? `&${rangeQuery}` : ''}`,
           ),
-          apiClient.get<ApiResponse<ErrorReport>>(`/admin/analytics/errors?days=${rangeDays}`),
+          apiClient.get<ApiResponse<ErrorReport>>(
+            `/admin/analytics/errors?days=${rangeDays}${rangeQuery ? `&${rangeQuery}` : ''}`,
+          ),
         ]);
         if (cancelled) return;
         if (eng.data.success) setEngagement(eng.data.data || null);
@@ -114,18 +146,21 @@ export default function AdminAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [rangeDays]);
+  }, [rangeDays, rangeQuery]);
 
   useEffect(() => {
     if (user && user.role === 'admin') {
       fetchAnalytics();
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, rangeQuery]);
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<ApiResponse<AdminAnalytics>>('/admin/analytics');
+      const response = await apiClient.get<ApiResponse<AdminAnalytics>>(
+        `/admin/analytics${rangeQuery ? `?${rangeQuery}` : ''}`,
+      );
       if (response.data.success && response.data.data) {
         setAnalytics(response.data.data);
       }
@@ -142,7 +177,11 @@ export default function AdminAnalyticsPage() {
       setDetailLoading(true);
       setDetailError('');
       setDetail(null);
-      const params = new URLSearchParams({ metric: req.metric, ...(req.params || {}) });
+      const params = new URLSearchParams({
+        metric: req.metric,
+        ...(req.params || {}),
+        ...(fromDate && toDate ? { from: fromDate, to: toDate } : {}),
+      });
       const res = await apiClient.get<ApiResponse<AnalyticsDetail>>(
         `/admin/analytics/detail?${params.toString()}`
       );
@@ -183,6 +222,9 @@ export default function AdminAnalyticsPage() {
   }
 
   const abaAdoption = analytics.aba_adoption;
+  /** Labels change with the range: "Total users" is not "New users". */
+  const ranged = Boolean(analytics.range);
+  const label = (allTime: string, inRange: string) => (ranged ? inRange : allTime);
 
   return (
     <DashboardLayout>
@@ -192,6 +234,75 @@ export default function AdminAnalyticsPage() {
           <p className="mt-2 text-gray-600">
             Platform overview and insights — click any number for the detail behind it.
           </p>
+
+          {/*
+            One range for the page. Everything that counts events in a period
+            follows it; the two panels that report a balance rather than a
+            period say so, instead of pretending.
+          */}
+          <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700">Date range</label>
+              <select
+                value={preset}
+                onChange={(e) => applyPreset(e.target.value as typeof preset)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="all">All time</option>
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+
+            {(preset === 'custom' || (fromDate && toDate)) && (
+              <>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">From</label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    max={toDate || undefined}
+                    onChange={(e) => {
+                      setPreset('custom');
+                      setFromDate(e.target.value);
+                    }}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">To</label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(e) => {
+                      setPreset('custom');
+                      setToDate(e.target.value);
+                    }}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </>
+            )}
+
+            {fromDate && toDate && (
+              <button
+                type="button"
+                onClick={() => applyPreset('all')}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Clear
+              </button>
+            )}
+
+            <p className="ml-auto max-w-sm text-xs text-gray-600">
+              {analytics.range
+                ? `Counting ${analytics.range.from} to ${analytics.range.to} (${analytics.range.days} days). Subscription mix and token wallets show their balance today.`
+                : 'Showing all time. Pick a range to narrow every count below.'}
+            </p>
+          </div>
         </div>
 
         {/* Overview Stats */}
@@ -203,7 +314,7 @@ export default function AdminAnalyticsPage() {
                 onClick={() => openDetail({ metric: 'total_users' })}
                 className="text-2xl font-bold text-gray-900"
               />
-              <div className="text-sm font-medium text-gray-500">Total Users</div>
+              <div className="text-sm font-medium text-gray-500">{label('Total Users', 'New users')}</div>
             </div>
           </div>
           <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -213,39 +324,59 @@ export default function AdminAnalyticsPage() {
                 onClick={() => openDetail({ metric: 'total_children' })}
                 className="text-2xl font-bold text-gray-900"
               />
-              <div className="text-sm font-medium text-gray-500">Total Children</div>
+              <div className="text-sm font-medium text-gray-500">{label('Total Children', 'New children')}</div>
             </div>
           </div>
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <Metric
-                value={analytics.overview.daily_active_users}
-                onClick={() => openDetail({ metric: 'daily_active_users' })}
-                className="text-2xl font-bold text-gray-900"
-              />
-              <div className="text-sm font-medium text-gray-500">Daily Active Users</div>
+          {/*
+            Daily, weekly and monthly are three fixed windows; once the reader
+            picks their own, all three collapse to the same question and showing
+            it three times is just noise.
+          */}
+          {ranged ? (
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="p-5">
+                <Metric
+                  value={analytics.overview.monthly_active_users}
+                  onClick={() => openDetail({ metric: 'monthly_active_users' })}
+                  className="text-2xl font-bold text-gray-900"
+                />
+                <div className="text-sm font-medium text-gray-500">Active users in range</div>
+              </div>
             </div>
-          </div>
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <Metric
-                value={analytics.overview.weekly_active_users ?? 0}
-                onClick={() => openDetail({ metric: 'weekly_active_users' })}
-                className="text-2xl font-bold text-gray-900"
-              />
-              <div className="text-sm font-medium text-gray-500">Weekly Active Users</div>
-            </div>
-          </div>
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <Metric
-                value={analytics.overview.monthly_active_users}
-                onClick={() => openDetail({ metric: 'monthly_active_users' })}
-                className="text-2xl font-bold text-gray-900"
-              />
-              <div className="text-sm font-medium text-gray-500">Monthly Active Users</div>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-5">
+                  <Metric
+                    value={analytics.overview.daily_active_users}
+                    onClick={() => openDetail({ metric: 'daily_active_users' })}
+                    className="text-2xl font-bold text-gray-900"
+                  />
+                  <div className="text-sm font-medium text-gray-500">Daily Active Users</div>
+                </div>
+              </div>
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-5">
+                  <Metric
+                    value={analytics.overview.weekly_active_users ?? 0}
+                    onClick={() => openDetail({ metric: 'weekly_active_users' })}
+                    className="text-2xl font-bold text-gray-900"
+                  />
+                  <div className="text-sm font-medium text-gray-500">Weekly Active Users</div>
+                </div>
+              </div>
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="p-5">
+                  <Metric
+                    value={analytics.overview.monthly_active_users}
+                    onClick={() => openDetail({ metric: 'monthly_active_users' })}
+                    className="text-2xl font-bold text-gray-900"
+                  />
+                  <div className="text-sm font-medium text-gray-500">Monthly Active Users</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Weekly home program (ABA) adoption */}
@@ -256,7 +387,10 @@ export default function AdminAnalyticsPage() {
                 Weekly Home Program (ABA)
               </h3>
               <p className="text-sm text-gray-500 mb-4">
-                Active children who have completed at least one weekly-program session.
+                {label(
+                  'Active children who have completed at least one weekly-program session.',
+                  'Active children who completed a weekly-program session inside this range.',
+                )}
               </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="rounded-lg border border-gray-200 p-4">
@@ -265,7 +399,7 @@ export default function AdminAnalyticsPage() {
                     onClick={() => openDetail({ metric: 'aba_ran' })}
                     className="text-2xl font-bold text-green-700"
                   />
-                  <div className="text-sm font-medium text-gray-500">Have run the program</div>
+                  <div className="text-sm font-medium text-gray-500">{label('Have run the program', 'Ran it in this range')}</div>
                 </div>
                 <div className="rounded-lg border border-gray-200 p-4">
                   <Metric
@@ -295,33 +429,42 @@ export default function AdminAnalyticsPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Logs (Last 7 days)</span>
+                  <span className="text-gray-600">{label('Logs (Last 7 days)', 'Logs in range')}</span>
                   <Metric
                     value={analytics.activity.recent_logs}
                     onClick={() => openDetail({ metric: 'recent_logs' })}
                   />
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Sessions (Last 7 days)</span>
+                  <span className="text-gray-600">{label('Sessions (Last 7 days)', 'Sessions in range')}</span>
                   <Metric
                     value={analytics.activity.recent_sessions}
                     onClick={() => openDetail({ metric: 'recent_sessions' })}
                   />
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Logs</span>
-                  <Metric
-                    value={analytics.overview.total_logs}
-                    onClick={() => openDetail({ metric: 'total_logs' })}
-                  />
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Sessions</span>
-                  <Metric
-                    value={analytics.overview.total_sessions}
-                    onClick={() => openDetail({ metric: 'total_sessions' })}
-                  />
-                </div>
+                {/*
+                  All-time totals next to a 7-day figure is a useful contrast;
+                  under a range both rows count the same window, so they would
+                  just repeat the two above.
+                */}
+                {!ranged && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Logs</span>
+                      <Metric
+                        value={analytics.overview.total_logs}
+                        onClick={() => openDetail({ metric: 'total_logs' })}
+                      />
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Sessions</span>
+                      <Metric
+                        value={analytics.overview.total_sessions}
+                        onClick={() => openDetail({ metric: 'total_sessions' })}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -428,7 +571,15 @@ export default function AdminAnalyticsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Total Tokens Used</span>
+                  {/*
+                    Different measures: with a range this is spend from the
+                    dated usage ledger; without one it is the current billing
+                    period's balance across wallets, which is what the
+                    near-quota panel below is about.
+                  */}
+                  <span className="text-gray-600">
+                    {label('Tokens used (current period)', 'Tokens spent in range')}
+                  </span>
                   <Metric
                     value={analytics.ai_usage.total_tokens_used.toLocaleString()}
                     onClick={() => openDetail({ metric: 'tokens_used' })}

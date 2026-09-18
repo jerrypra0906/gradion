@@ -545,6 +545,8 @@ export interface AnalyticsDetail {
 }
 
 export interface AdminAnalytics {
+  /** The window every period-based count below was measured over, if any. */
+  range: { from: string; to: string; days: number } | null;
   overview: {
     total_users: number;
     total_children: number;

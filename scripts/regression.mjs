@@ -417,6 +417,43 @@ section('Admin functional flows');
   await visit(p, '/dashboard/admin/master-programs', 3000);
   check('master program library renders', (await p.locator('body').innerText()).length > 400);
 
+  // Analytics date range drives every count on the page.
+  await visit(p, '/dashboard/admin/analytics', 3200);
+  const readCounts = async () => {
+    const t = await p.locator('body').innerText();
+    const grab = (re) => Number((t.match(re) || [])[1] ?? -1);
+    return {
+      users: grab(/(\d+)\s*\n\s*(?:Total Users|New users)/),
+      aba: grab(/(\d+)\s*\n\s*(?:Have run the program|Ran it in this range)/),
+      note: (t.match(/(Showing all time|Counting \d{4}-\d{2}-\d{2})/) || [])[1] ?? '',
+    };
+  };
+  const allTime = await readCounts();
+  check('analytics defaults to all time', allTime.note === 'Showing all time', JSON.stringify(allTime));
+
+  await p.selectOption('select', '30');
+  await p.waitForTimeout(3200);
+  const ranged = await readCounts();
+  check('analytics range narrows the counts',
+    ranged.note.startsWith('Counting') && ranged.users <= allTime.users && ranged.users >= 0,
+    `all-time ${allTime.users} → 30d ${ranged.users}`);
+  check('analytics collapses the three active-user cards under a range',
+    (await p.locator('text=Active users in range').count()) === 1,
+    `${await p.locator('text=Active users in range').count()} cards`);
+
+  // The ABA drill-down answers "how many times, what score, how long".
+  const abaCard = p.locator('div.rounded-lg.border')
+    .filter({ hasText: /Ran it in this range|Have run the program/ }).first();
+  if (await abaCard.count()) {
+    await abaCard.locator('button').first().click();
+    await p.waitForTimeout(2500);
+    const modal = await p.locator('body').innerText();
+    check('ABA drill-down reports runs, average score and duration per child',
+      /SESSIONS RUN/i.test(modal) && /AVG SCORE/i.test(modal) && /AVG DURATION/i.test(modal));
+  } else {
+    check('ABA drill-down reachable', false, 'no ABA metric card');
+  }
+
   await ctx.close();
 }
 

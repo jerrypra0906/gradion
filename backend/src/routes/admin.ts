@@ -19,7 +19,30 @@ import { healWeekPlans } from './abaProgram.js';
 import { getEngagementReport, getErrorReport } from '../services/analytics.service.js';
 import { UserService } from '../services/user.service.js';
 import { notifyParentOfApprovedContent } from '../services/reviewNotification.service.js';
+import { countTrialTokens } from '../services/abaProgramProgress.service.js';
+import { sumExecutedProgramDurationSeconds } from '../services/parentLogFromAba.service.js';
 import { Role } from '../types/index.js';
+
+/**
+ * Optional `from`/`to` (YYYY-MM-DD) on the analytics endpoints.
+ *
+ * `to` is inclusive for the reader, so it is widened to the end of that day;
+ * comparisons stay half-open. Returns null when no usable range was given, so
+ * callers fall back to all-time.
+ */
+function parseAnalyticsRange(query: unknown): { from: Date; to: Date; days: number } | null {
+  const q = (query || {}) as { from?: string; to?: string };
+  const ymdRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!q.from || !q.to || !ymdRe.test(q.from) || !ymdRe.test(q.to)) return null;
+
+  const from = new Date(`${q.from}T00:00:00.000Z`);
+  const to = new Date(`${q.to}T00:00:00.000Z`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) return null;
+
+  to.setUTCDate(to.getUTCDate() + 1);
+  const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / 86400000));
+  return { from, to, days };
+}
 
 export async function adminRoutes(
   fastify: FastifyInstance,
@@ -561,6 +584,8 @@ export async function adminRoutes(
     async (request, reply) => {
       const q = (request.query || {}) as { metric?: string; plan?: string; status?: string };
       const metric = String(q.metric || '');
+      // The drill-down honours whatever range the page is showing.
+      const detailRange = parseAnalyticsRange(request.query);
       const TAKE = 200;
 
       const now = new Date();
@@ -735,13 +760,21 @@ export async function adminRoutes(
       };
 
       // Children + their ABA practice state, for the adoption drill-downs.
-      const listAbaChildren = async (ran: boolean, title: string) => {
+      const listAbaChildren = async (
+        ran: boolean,
+        title: string,
+        range: { from: Date; to: Date } | null
+      ) => {
+        const completedIn: Prisma.ChildAbaProgramSessionWhereInput = range
+          ? { status: 'completed', completed_at: { gte: range.from, lt: range.to } }
+          : { status: 'completed' };
+
         const children = await prisma.child.findMany({
           where: {
             is_active: true,
             abaProgramWeeks: ran
-              ? { some: { sessions: { some: { status: 'completed' } } } }
-              : { none: { sessions: { some: { status: 'completed' } } } },
+              ? { some: { sessions: { some: completedIn } } }
+              : { none: { sessions: { some: completedIn } } },
           },
           orderBy: { created_at: 'desc' },
           take: TAKE,
@@ -749,37 +782,100 @@ export async function adminRoutes(
             parent: { select: { name: true, email: true } },
             abaProgramWeeks: {
               orderBy: { week_start: 'desc' },
-              take: 1,
+              // Every week, so runs/score/duration cover the child's history
+              // rather than just the current plan.
               include: {
                 sessions: {
-                  where: { status: 'completed' },
+                  where: ran ? completedIn : { status: 'completed' },
                   orderBy: { completed_at: 'desc' },
-                  take: 1,
                 },
               },
             },
           },
         });
+
+        if (!ran) {
+          return {
+            title,
+            columns: [
+              { key: 'child', label: 'Child' },
+              { key: 'parent', label: 'Parent' },
+              { key: 'email', label: 'Parent email' },
+              { key: 'program', label: 'Has program' },
+            ],
+            rows: children.map((c) => {
+              const latest = c.abaProgramWeeks[0];
+              return {
+                child: c.name,
+                parent: c.parent?.name ?? '—',
+                email: c.parent?.email ?? '—',
+                program: latest ? `yes (${ymd(latest.week_start)})` : 'no',
+              };
+            }),
+          };
+        }
+
+        // "Have run the program" is only useful if it says how much: how many
+        // sessions each child completed, how independently they scored, and
+        // how long a session actually takes them.
+        const rows = children.map((c) => {
+          let runs = 0;
+          let independent = 0;
+          let counted = 0;
+          let totalSeconds = 0;
+          let lastRun: Date | null = null;
+
+          for (const week of c.abaProgramWeeks) {
+            for (const session of week.sessions) {
+              runs += 1;
+              totalSeconds += sumExecutedProgramDurationSeconds(session, week.plan_json);
+              if (session.completed_at && (!lastRun || session.completed_at > lastRun)) {
+                lastRun = session.completed_at;
+              }
+
+              const guided = session.guided_results_json as { activities?: any[] } | null;
+              for (const activity of Array.isArray(guided?.activities) ? guided!.activities! : []) {
+                for (const set of Array.isArray(activity?.trial_sets) ? activity.trial_sets : []) {
+                  const tallied = countTrialTokens(set?.trial_data);
+                  independent += tallied.independent;
+                  counted += tallied.counted;
+                }
+              }
+
+              const notes = session.ocr_parsed_json as { rows?: any[] } | null;
+              for (const row of Array.isArray(notes?.rows) ? notes!.rows! : []) {
+                const tallied = countTrialTokens(row?.trial_data);
+                independent += tallied.independent;
+                counted += tallied.counted;
+              }
+            }
+          }
+
+          const avgScore = counted > 0 ? Math.round((independent / counted) * 100) : null;
+          const avgMinutes = runs > 0 ? Math.round(totalSeconds / runs / 60) : 0;
+
+          return {
+            child: c.name,
+            parent: c.parent?.name ?? '—',
+            runs,
+            avg_score: avgScore === null ? '—' : `${avgScore}%`,
+            avg_duration: runs > 0 ? `${avgMinutes} min` : '—',
+            last_run: lastRun ? ymd(lastRun) : '—',
+          };
+        });
+
         return {
           title,
           columns: [
             { key: 'child', label: 'Child' },
             { key: 'parent', label: 'Parent' },
-            { key: 'email', label: 'Parent email' },
-            { key: 'program', label: 'Has program' },
-            { key: 'last_run', label: 'Last completed run' },
+            { key: 'runs', label: 'Sessions run' },
+            { key: 'avg_score', label: 'Avg score' },
+            { key: 'avg_duration', label: 'Avg duration' },
+            { key: 'last_run', label: 'Last run' },
           ],
-          rows: children.map((c) => {
-            const latest = c.abaProgramWeeks[0];
-            const lastRun = latest?.sessions?.[0]?.completed_at ?? null;
-            return {
-              child: c.name,
-              parent: c.parent?.name ?? '—',
-              email: c.parent?.email ?? '—',
-              program: latest ? `yes (${ymd(latest.week_start)})` : 'no',
-              last_run: lastRun ? ymd(lastRun) : '—',
-            };
-          }),
+          // Most practice first — that is the question this list answers.
+          rows: rows.sort((a, b) => Number(b.runs) - Number(a.runs)),
         };
       };
 
@@ -902,10 +998,18 @@ export async function adminRoutes(
           data = await listWallets('AI token wallets');
           break;
         case 'aba_ran':
-          data = await listAbaChildren(true, 'Children who have run the weekly home program');
+          data = await listAbaChildren(
+            true,
+            'Children who have run the weekly home program',
+            detailRange
+          );
           break;
         case 'aba_not_ran':
-          data = await listAbaChildren(false, 'Children who have not run the weekly home program yet');
+          data = await listAbaChildren(
+            false,
+            'Children who have not run the weekly home program yet',
+            detailRange
+          );
           break;
         default:
           reply.code(400);
@@ -921,8 +1025,12 @@ export async function adminRoutes(
     '/analytics/engagement',
     { preHandler: [authenticate, requireRole('admin')] },
     async (request) => {
+      // A from/to range wins over `days`, so the whole page moves together.
+      const range = parseAnalyticsRange(request.query);
       const q = (request.query || {}) as { days?: string };
-      const days = Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
+      const days = range
+        ? Math.min(365, range.days)
+        : Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
       const data = await getEngagementReport(days);
       return { success: true, data };
     }
@@ -933,8 +1041,11 @@ export async function adminRoutes(
     '/analytics/errors',
     { preHandler: [authenticate, requireRole('admin')] },
     async (request) => {
+      const range = parseAnalyticsRange(request.query);
       const q = (request.query || {}) as { days?: string };
-      const days = Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
+      const days = range
+        ? Math.min(365, range.days)
+        : Math.min(90, Math.max(1, parseInt(String(q.days || '7'), 10) || 7));
       const data = await getErrorReport(days);
       return { success: true, data };
     }
@@ -944,7 +1055,7 @@ export async function adminRoutes(
   fastify.get(
     '/analytics',
     { preHandler: [authenticate, requireRole('admin')] },
-    async (_request, _reply) => {
+    async (request, _reply) => {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const thisWeek = new Date(today);
@@ -952,7 +1063,13 @@ export async function adminRoutes(
       const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-      // Total counts
+      // An optional date range narrows everything that counts events in a
+      // period. Point-in-time figures (subscription mix, wallet balances) are
+      // labelled as such in the response rather than pretending to follow it.
+      const range = parseAnalyticsRange(request.query);
+      const inRange = range ? { gte: range.from, lt: range.to } : undefined;
+
+      // Counts — over the range when one is given, otherwise all time.
       const [
         totalUsers,
         totalChildren,
@@ -960,66 +1077,43 @@ export async function adminRoutes(
         totalLogs,
         totalSubscriptions,
       ] = await Promise.all([
-        prisma.user.count(),
-        prisma.child.count(),
-        prisma.session.count(),
-        prisma.parentLog.count(),
-        prisma.subscription.count(),
+        prisma.user.count(inRange ? { where: { created_at: inRange } } : undefined),
+        prisma.child.count(inRange ? { where: { created_at: inRange } } : undefined),
+        prisma.session.count(inRange ? { where: { date: inRange } } : undefined),
+        prisma.parentLog.count(inRange ? { where: { created_at: inRange } } : undefined),
+        prisma.subscription.count(inRange ? { where: { created_at: inRange } } : undefined),
       ]);
 
-      // Active users (DAU/MAU)
+      // Active users. With a range, all three report activity inside it —
+      // "daily/weekly/monthly" stop meaning anything once the reader picks
+      // their own window, so the frontend relabels them to match.
+      const activeUserWhere = (since: Date) => ({
+        OR: [
+          { sessions: { some: { date: inRange ?? { gte: since } } } },
+          { parentLogs: { some: { created_at: inRange ?? { gte: since } } } },
+        ],
+      });
+
       const dailyActiveUsers = await prisma.user.count({
-        where: {
-          sessions: {
-            some: {
-              date: {
-                gte: today,
-              },
-            },
-          },
-        },
+        where: inRange
+          ? activeUserWhere(today)
+          : { sessions: { some: { date: { gte: today } } } },
       });
 
       // Same activity definition as MAU, over the last 7 days.
       const weeklyActiveUsers = await prisma.user.count({
-        where: {
-          OR: [
-            { sessions: { some: { date: { gte: thisWeek } } } },
-            { parentLogs: { some: { created_at: { gte: thisWeek } } } },
-          ],
-        },
+        where: activeUserWhere(thisWeek),
       });
 
       const monthlyActiveUsers = await prisma.user.count({
-        where: {
-          OR: [
-            {
-              sessions: {
-                some: {
-                  date: {
-                    gte: thisMonth,
-                  },
-                },
-              },
-            },
-            {
-              parentLogs: {
-                some: {
-                  created_at: {
-                    gte: thisMonth,
-                  },
-                },
-              },
-            },
-          ],
-        },
+        where: activeUserWhere(thisMonth),
       });
 
       // Log submissions per day (last 30 days)
       const logSubmissions = await prisma.parentLog.groupBy({
         by: ['created_at'],
         where: {
-          created_at: {
+          created_at: inRange ?? {
             gte: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000),
           },
         },
@@ -1063,8 +1157,30 @@ export async function adminRoutes(
         },
       });
 
-      const totalTokensUsed = aiTokenStats._sum.current_token_usage || 0;
-      const avgTokensPerUser = aiTokenStats._avg.current_token_usage || 0;
+      // Wallet balances are a point in time, but the usage ledger is dated, so
+      // a range reports what was actually spent inside it.
+      const rangeTokens = inRange
+        ? await prisma.aITokenUsageLog.aggregate({
+            where: { created_at: inRange },
+            _sum: { tokens: true },
+          })
+        : null;
+      const rangeTokenUsers = inRange
+        ? await prisma.aITokenUsageLog.findMany({
+            where: { created_at: inRange },
+            distinct: ['user_id'],
+            select: { user_id: true },
+          })
+        : null;
+
+      const totalTokensUsed = inRange
+        ? rangeTokens?._sum.tokens || 0
+        : aiTokenStats._sum.current_token_usage || 0;
+      const avgTokensPerUser = inRange
+        ? (rangeTokenUsers?.length || 0) > 0
+          ? (rangeTokens?._sum.tokens || 0) / (rangeTokenUsers?.length || 1)
+          : 0
+        : aiTokenStats._avg.current_token_usage || 0;
       const totalTokenLimit = aiTokenStats._sum.monthly_token_limit || 0;
 
       // Users near quota (AI tokens) - using raw query for percentage calculation
@@ -1115,21 +1231,13 @@ export async function adminRoutes(
         take: 10,
       });
 
-      // Recent activity (last 7 days)
+      // Recent activity — the chosen range, or the last 7 days by default.
       const recentLogs = await prisma.parentLog.count({
-        where: {
-          created_at: {
-            gte: thisWeek,
-          },
-        },
+        where: { created_at: inRange ?? { gte: thisWeek } },
       });
 
       const recentSessions = await prisma.session.count({
-        where: {
-          date: {
-            gte: thisWeek,
-          },
-        },
+        where: { date: inRange ?? { gte: thisWeek } },
       });
 
       // Monthly growth
@@ -1170,13 +1278,17 @@ export async function adminRoutes(
       // Estimated AI cost (rough estimate: $0.002 per 1K tokens)
       const estimatedAICost = (totalTokensUsed / 1000) * 0.002;
 
-      // Weekly home program (ABA) adoption among active children
+      // Weekly home program (ABA) adoption among active children. With a
+      // range, "have run" means ran inside it.
+      const ranSessionWhere: Prisma.ChildAbaProgramSessionWhereInput = inRange
+        ? { status: 'completed', completed_at: inRange }
+        : { status: 'completed' };
       const [activeChildren, childrenRanAba] = await Promise.all([
         prisma.child.count({ where: { is_active: true } }),
         prisma.child.count({
           where: {
             is_active: true,
-            abaProgramWeeks: { some: { sessions: { some: { status: 'completed' } } } },
+            abaProgramWeeks: { some: { sessions: { some: ranSessionWhere } } },
           },
         }),
       ]);
@@ -1184,6 +1296,13 @@ export async function adminRoutes(
       return {
         success: true,
         data: {
+          range: range
+            ? {
+                from: range.from.toISOString().slice(0, 10),
+                to: new Date(range.to.getTime() - 86400000).toISOString().slice(0, 10),
+                days: range.days,
+              }
+            : null,
           overview: {
             total_users: totalUsers,
             total_children: totalChildren,
