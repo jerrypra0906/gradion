@@ -15,6 +15,8 @@ export interface EnrichedSkillPractice {
   target?: string;
   trial_data?: string;
   domain?: string;
+  /** Plan program id (newer logs) — matches practice-video feedback to the program. */
+  program_id?: string;
 }
 
 const MP_ID_PATTERN = /^mp_[a-f0-9]+$/i;

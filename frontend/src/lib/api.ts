@@ -294,6 +294,142 @@ export interface SkillRating {
   target?: string;
   trial_data?: string;
   domain?: string;
+  program_id?: string;
+}
+
+/** Reviewed practice-video feedback, as shown to the family in Activity Logs. */
+export interface ProgramVideoFeedback {
+  id: number;
+  program_id: string;
+  program_name: string;
+  status: 'approved' | 'rejected';
+  score: number | null;
+  feedback_text: string | null;
+  strengths: string[];
+  improvements: string[];
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+}
+
+export type ProgramVideoStatus =
+  | 'awaiting_upload'
+  | 'uploaded'
+  | 'queued'
+  | 'analyzing'
+  | 'analyzed'
+  | 'manual_review';
+
+/** A practice video within a session, as the parent's runner sees it. */
+export interface ProgramVideo {
+  id: number;
+  program_id: string;
+  activity_id: string | null;
+  program_name: string;
+  source: 'recording' | 'upload';
+  status: ProgramVideoStatus;
+  review_status: AiReviewStatus;
+  duration_seconds: number | null;
+  file_size: number;
+  created_at: string;
+}
+
+export interface ProgramVideoSettings {
+  consented: boolean;
+  consented_at: string | null;
+  max_file_mb: number;
+  max_duration_seconds: number;
+}
+
+export type ProgramVideoUploadTarget =
+  | { kind: 's3'; method: 'PUT'; url: string; headers: Record<string, string> }
+  | { kind: 'local'; method: 'POST'; path: string };
+
+export type StepVerdict = 'followed' | 'partial' | 'missed' | 'not_observable';
+export type TrialMatchVerdict = 'matches' | 'partially_matches' | 'does_not_match' | 'not_applicable';
+
+export interface ProgramVideoReport {
+  overall_score: number;
+  confidence: 'high' | 'medium' | 'low';
+  summary: string;
+  video_quality: { usable: boolean; issues: string[] };
+  steps: Array<{ step: string; verdict: StepVerdict; timestamp: string | null; note: string }>;
+  prompting: { score: number; notes: string; events: Array<{ timestamp: string; detail: string }> };
+  reinforcement: { score: number; notes: string; events: Array<{ timestamp: string; detail: string }> };
+  trial_recording_match: { verdict: TrialMatchVerdict; notes: string };
+  strengths: string[];
+  improvements: string[];
+  parent_feedback: string;
+}
+
+export interface AdminProgramVideoListItem {
+  id: number;
+  child: { id: number; name: string };
+  uploader: { id: number; name: string };
+  program_id: string;
+  program_name: string;
+  source: 'recording' | 'upload';
+  status: ProgramVideoStatus;
+  review_status: AiReviewStatus;
+  ai_score: number | null;
+  final_score: number | null;
+  ai_error: string | null;
+  duration_seconds: number | null;
+  created_at: string;
+  analyzed_at: string | null;
+  reviewed_at: string | null;
+  video_deleted_at: string | null;
+}
+
+export interface AdminProgramVideoStats {
+  awaiting_review: number;
+  processing: number;
+  approved: number;
+  rejected: number;
+  agreement_30d: {
+    reviews: number;
+    mean_abs_score_gap: number | null;
+    within_10_points_pct: number | null;
+  };
+}
+
+export interface ProgramGuidance {
+  id: string;
+  name: string;
+  domain: string | null;
+  rationale: string | null;
+  targets: string[];
+  materials: string[];
+  steps: string[];
+  prompts: string[];
+  mastery_criteria: string | null;
+  recommended_trials_per_day: number | null;
+  guided_activity_steps: string[];
+}
+
+export interface AdminProgramVideoDetail {
+  video: AdminProgramVideoListItem & {
+    uploader: { id: number; name: string; email: string };
+    mime_type: string;
+    file_size: number;
+    ai_model: string | null;
+    feedback_text: string | null;
+    rejection_reason: string | null;
+    week_start: string;
+    session_started_at: string;
+    session_completed_at: string | null;
+  };
+  guidance: ProgramGuidance | null;
+  trials: Array<{ index: number; result: string; phase_or_target: string; offset_seconds: number | null }>;
+  ai_report: ProgramVideoReport | null;
+  report: ProgramVideoReport;
+  playback_url: string | null;
+  history: Array<{
+    id: number;
+    editor: string | null;
+    decision: AiReviewStatus;
+    score_delta: number | null;
+    created_at: string;
+  }>;
 }
 
 export interface ParentLog {
@@ -313,6 +449,8 @@ export interface ParentLog {
   therapist_comment?: string;
   status: 'pending' | 'approved' | 'flagged';
   aba_session_id?: number | null;
+  /** Reviewed practice-video feedback for this ABA session, grouped by program. */
+  program_video_feedback?: ProgramVideoFeedback[];
   created_at: string;
   updated_at: string;
   child?: {

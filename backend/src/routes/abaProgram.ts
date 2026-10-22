@@ -30,6 +30,7 @@ import {
 import { generateAbaWeekForChild } from '../services/abaProgramGeneration.service.js';
 import { maybeAutoAdvanceProgram } from '../services/abaProgramAutoAdvance.service.js';
 import { computeWeekProgramProgress } from '../services/abaProgramProgress.service.js';
+import { queueSessionVideos } from '../services/programVideoAnalysis.service.js';
 import {
   computeWeeklyExecutedHours,
   computeWeeklyPracticeDays,
@@ -738,6 +739,9 @@ export async function abaProgramRoutes(
 
         await recordLearningInsightForWeek(weekId);
         await syncParentLogForCompletedSession(updated.id);
+        // Practice videos recorded/uploaded during this run go to AI analysis
+        // now that the trial results they're checked against are final.
+        await queueSessionVideos(updated.id);
 
         // When this session pushes the week over the progress thresholds, the
         // next program is generated automatically (fire-and-forget: generation

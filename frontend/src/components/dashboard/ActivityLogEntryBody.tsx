@@ -8,8 +8,104 @@ import {
   trialTokenLabel,
   type EnrichedSkillPractice,
 } from '@/lib/abaTrialDisplay';
-import { ParentLog } from '@/lib/api';
+import { ParentLog, ProgramVideoFeedback } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+function normName(s: string): string {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Clinical feedback on a practice video, shown under the program it belongs
+ * to. Approved: score + what went well + what to try next. Rejected: why the
+ * video could not be assessed, so the parent knows to record again.
+ */
+function VideoFeedbackBlock({
+  feedback,
+  language,
+}: {
+  feedback: ProgramVideoFeedback;
+  language: 'en' | 'id';
+}) {
+  const isId = language === 'id';
+  if (feedback.status === 'rejected') {
+    return (
+      <div className="mt-2 rounded-lg border border-[#FFB900]/35 bg-[#FFB900]/10 px-3 py-2.5">
+        <p className="text-xs font-semibold text-[#1A2B4C]">
+          🎬 {isId ? 'Video latihan belum bisa dinilai' : 'Practice video could not be assessed'}
+        </p>
+        {feedback.rejection_reason && (
+          <p className="mt-1 text-xs leading-relaxed text-[#1A2B4C]/75">{feedback.rejection_reason}</p>
+        )}
+        <p className="mt-1 text-[11px] text-[#1A2B4C]/55">
+          {isId ? 'Silakan rekam lagi di latihan berikutnya.' : 'Please record again in your next practice.'}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-[#00C1B2]/30 bg-[#00C1B2]/5 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-[#1A2B4C]">
+          🎬 {isId ? 'Umpan balik video dari tim klinis' : 'Video feedback from the clinical team'}
+        </p>
+        {typeof feedback.score === 'number' && (
+          <span className="rounded-full border border-[#00C1B2]/35 bg-white px-2 py-0.5 text-[11px] font-semibold text-[#00736C]">
+            {isId ? 'Kesesuaian dengan panduan' : 'Matches the guide'}: {feedback.score}/100
+          </span>
+        )}
+      </div>
+      {feedback.feedback_text && (
+        <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-[#1A2B4C]/80">
+          {feedback.feedback_text}
+        </p>
+      )}
+      {feedback.strengths.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#00736C]">
+            {isId ? 'Yang sudah baik' : 'What went well'}
+          </p>
+          <ul className="mt-0.5 space-y-0.5 text-xs text-[#1A2B4C]/80">
+            {feedback.strengths.map((s, i) => (
+              <li key={i}>✓ {s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {feedback.improvements.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1A2B4C]/60">
+            {isId ? 'Coba di latihan berikutnya' : 'Try next time'}
+          </p>
+          <ul className="mt-0.5 space-y-0.5 text-xs text-[#1A2B4C]/80">
+            {feedback.improvements.map((s, i) => (
+              <li key={i}>→ {s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Match each feedback to the program card it belongs to (id first, then name). */
+function groupVideoFeedback(
+  feedback: ProgramVideoFeedback[],
+  skills: Array<{ name: string; program_id?: string }>,
+): { bySkill: Map<number, ProgramVideoFeedback[]>; unmatched: ProgramVideoFeedback[] } {
+  const bySkill = new Map<number, ProgramVideoFeedback[]>();
+  const unmatched: ProgramVideoFeedback[] = [];
+  for (const fb of feedback) {
+    let idx = skills.findIndex((s) => s.program_id && s.program_id === fb.program_id);
+    if (idx < 0) idx = skills.findIndex((s) => normName(s.name) === normName(fb.program_name));
+    if (idx < 0) {
+      unmatched.push(fb);
+      continue;
+    }
+    bySkill.set(idx, [...(bySkill.get(idx) || []), fb]);
+  }
+  return { bySkill, unmatched };
+}
 
 interface ActivityLogEntryBodyProps {
   log: ParentLog;
@@ -161,6 +257,20 @@ export function ActivityLogEntryBody({ log, language, compact = false }: Activit
   const rawSkills = (log.skills_practiced || []) as EnrichedSkillPractice[];
   const hasTrialData = rawSkills.some((s) => s.trial_data);
   const enrichedSkills = asEnrichedSkills(rawSkills);
+  // Match on the raw names: display names are reformatted for reading.
+  const { bySkill, unmatched } = groupVideoFeedback(log.program_video_feedback || [], rawSkills);
+
+  const unmatchedBlock =
+    unmatched.length > 0 ? (
+      <div className="space-y-1">
+        {unmatched.map((fb) => (
+          <div key={fb.id}>
+            <p className="text-xs font-semibold text-[#1A2B4C]">{fb.program_name}</p>
+            <VideoFeedbackBlock feedback={fb} language={language} />
+          </div>
+        ))}
+      </div>
+    ) : null;
 
   if (isAba && hasTrialData) {
     return (
@@ -170,9 +280,15 @@ export function ActivityLogEntryBody({ log, language, compact = false }: Activit
         </p>
         <div className="space-y-2">
           {enrichedSkills.map((skill, idx) => (
-            <AbaProgramResultCard key={idx} skill={skill} language={language} />
+            <div key={idx}>
+              <AbaProgramResultCard skill={skill} language={language} />
+              {(bySkill.get(idx) || []).map((fb) => (
+                <VideoFeedbackBlock key={fb.id} feedback={fb} language={language} />
+              ))}
+            </div>
           ))}
         </div>
+        {unmatchedBlock}
       </div>
     );
   }
@@ -185,17 +301,20 @@ export function ActivityLogEntryBody({ log, language, compact = false }: Activit
         </p>
         <div className="space-y-2">
           {enrichedSkills.map((skill, idx) => (
-            <div
-              key={idx}
-              className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 px-3 py-2.5"
-            >
-              <p className="text-sm font-semibold text-[#1A2B4C]">{skill.name}</p>
-              {skill.domain && (
-                <p className="mt-0.5 text-xs text-[#1A2B4C]/50">{skill.domain}</p>
-              )}
+            <div key={idx}>
+              <div className="rounded-xl border border-[#E5E8EB] bg-[#FDF8F1]/40 px-3 py-2.5">
+                <p className="text-sm font-semibold text-[#1A2B4C]">{skill.name}</p>
+                {skill.domain && (
+                  <p className="mt-0.5 text-xs text-[#1A2B4C]/50">{skill.domain}</p>
+                )}
+              </div>
+              {(bySkill.get(idx) || []).map((fb) => (
+                <VideoFeedbackBlock key={fb.id} feedback={fb} language={language} />
+              ))}
             </div>
           ))}
         </div>
+        {unmatchedBlock}
       </div>
     );
   }

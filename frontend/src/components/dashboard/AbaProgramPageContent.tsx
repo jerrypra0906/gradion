@@ -15,6 +15,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { planLanguageNotice, useAbaPlanLanguage } from '@/hooks/useAbaPlanLanguage';
 import { moduleForProgram, moduleLengthLabel } from '@/lib/modules';
 import { cn } from '@/lib/utils';
+import { ProgramVideoCapture } from '@/components/aba/ProgramVideoCapture';
 
 type GuidedActivity = {
   id: string;
@@ -32,7 +33,20 @@ type TrialResult = '+' | 'p' | '-' | 'os';
 type TrialEntry = {
   phase_or_target: string;
   result: TrialResult;
+  /** When the parent tapped it (epoch ms) — aligns trials to a practice video. */
+  at?: number;
 };
+
+type TrialEventPayload = { result: TrialResult; phase_or_target: string; at: number | null };
+
+/** Per-tap record (with time) sent alongside the trial strings. */
+function entriesToTrialEvents(entries: TrialEntry[], fallbackPhase: string): TrialEventPayload[] {
+  return entries.map((e) => ({
+    result: e.result,
+    phase_or_target: e.phase_or_target.trim() || fallbackPhase.trim() || 'Latihan',
+    at: typeof e.at === 'number' ? e.at : null,
+  }));
+}
 
 type TrialSetPayload = {
   phase_or_target: string;
@@ -188,11 +202,26 @@ function readSavedTrials(rawResults: unknown): {
     const id = a?.activity_id != null ? String(a.activity_id) : '';
     if (!id) continue;
     const entries: TrialEntry[] = [];
-    for (const set of Array.isArray(a?.trial_sets) ? a.trial_sets : []) {
-      const phase = String(set?.phase_or_target ?? '');
-      if (phase && phases[id] === undefined) phases[id] = phase;
-      for (const result of parseTrialData(set?.trial_data)) {
-        entries.push({ phase_or_target: phase, result });
+    // Prefer the per-tap events (they keep timestamps); fall back to the strings.
+    if (Array.isArray(a?.trial_events) && a.trial_events.length) {
+      for (const ev of a.trial_events) {
+        const result = parseTrialData(ev?.result)[0];
+        if (!result) continue;
+        const phase = String(ev?.phase_or_target ?? '');
+        if (phase && phases[id] === undefined) phases[id] = phase;
+        entries.push({
+          phase_or_target: phase,
+          result,
+          ...(Number.isFinite(Number(ev?.at)) && ev?.at !== null ? { at: Number(ev.at) } : {}),
+        });
+      }
+    } else {
+      for (const set of Array.isArray(a?.trial_sets) ? a.trial_sets : []) {
+        const phase = String(set?.phase_or_target ?? '');
+        if (phase && phases[id] === undefined) phases[id] = phase;
+        for (const result of parseTrialData(set?.trial_data)) {
+          entries.push({ phase_or_target: phase, result });
+        }
       }
     }
     trials[id] = entries;
@@ -231,6 +260,8 @@ export function AbaProgramPageContent() {
   const [reloadToken, setReloadToken] = useState(0);
   /** Latest `recordTrial`, so the key handler is bound once but never stale. */
   const keyScoreRef = useRef<((token: TrialResult) => void) | null>(null);
+  /** A practice video is recording or uploading — submitting now would lose it. */
+  const [videoBusy, setVideoBusy] = useState(false);
 
   const activities: GuidedActivity[] = useMemo(() => {
     const plan: any = week?.plan_json;
@@ -416,6 +447,10 @@ export function AbaProgramPageContent() {
             trialsByActivity[a.id] || [],
             phaseByActivity[a.id] ?? String(a.title ?? ''),
           ),
+          trial_events: entriesToTrialEvents(
+            trialsByActivity[a.id] || [],
+            phaseByActivity[a.id] ?? String(a.title ?? ''),
+          ),
         })),
       };
       void apiClient
@@ -508,8 +543,9 @@ export function AbaProgramPageContent() {
    * trial" / "Trial berikutnya") for a decision they had already made.
    */
   const recordTrial = (token: TrialResult) => {
+    const at = Date.now();
     setTrialsByActivity((prev) => {
-      const next = [...(prev[current.id] || []), { phase_or_target: currentPhase, result: token }];
+      const next = [...(prev[current.id] || []), { phase_or_target: currentPhase, result: token, at }];
       if (next.length >= expectedTrials) {
         setTrialsFinishedByActivity((f) => ({ ...f, [current.id]: true }));
       }
@@ -539,6 +575,10 @@ export function AbaProgramPageContent() {
       linked_program_id: a.linked_program_id || null,
       finished: Boolean(trialsFinishedByActivity[a.id]),
       trial_sets: entriesToTrialSets(
+        trialsByActivity[a.id] || [],
+        phaseByActivity[a.id] ?? String(a.title ?? ''),
+      ),
+      trial_events: entriesToTrialEvents(
         trialsByActivity[a.id] || [],
         phaseByActivity[a.id] ?? String(a.title ?? ''),
       ),
@@ -698,6 +738,18 @@ export function AbaProgramPageContent() {
               ? 'Sesi dilanjutkan — trial yang sudah dicatat masih tersimpan.'
               : 'Session resumed — the trials you already recorded are still here.'}
           </div>
+        )}
+
+        {/* Optional practice video for this program (record in-app or upload). */}
+        {linkedId && (
+          <ProgramVideoCapture
+            sessionId={sessionId}
+            programId={linkedId}
+            activityId={String(current.id)}
+            programName={String(linkedProgram?.name ?? current.title ?? '')}
+            language={language === 'id' ? 'id' : 'en'}
+            onBusyChange={setVideoBusy}
+          />
         )}
 
         {linkedProgram &&
@@ -1081,8 +1133,21 @@ export function AbaProgramPageContent() {
               </Button>
             )}
             {isLast && trialsComplete && (
-              <Button variant="brand" className="w-full sm:w-auto" onClick={finish} disabled={submitting}>
-                {submitting ? t('loading') : language === 'id' ? 'Kirim hasil' : 'Submit results'}
+              <Button
+                variant="brand"
+                className="w-full sm:w-auto"
+                onClick={finish}
+                disabled={submitting || videoBusy}
+              >
+                {submitting
+                  ? t('loading')
+                  : videoBusy
+                    ? language === 'id'
+                      ? 'Selesaikan video dulu…'
+                      : 'Finish the video first…'
+                    : language === 'id'
+                      ? 'Kirim hasil'
+                      : 'Submit results'}
               </Button>
             )}
             {/*
@@ -1094,13 +1159,17 @@ export function AbaProgramPageContent() {
                 variant="outline"
                 className="w-full sm:w-auto"
                 onClick={finish}
-                disabled={submitting}
+                disabled={submitting || videoBusy}
               >
                 {submitting
                   ? t('loading')
-                  : language === 'id'
-                    ? 'Akhiri sesi & simpan hasil'
-                    : 'End session & keep results'}
+                  : videoBusy
+                    ? language === 'id'
+                      ? 'Selesaikan video dulu…'
+                      : 'Finish the video first…'
+                    : language === 'id'
+                      ? 'Akhiri sesi & simpan hasil'
+                      : 'End session & keep results'}
               </Button>
             )}
           </div>

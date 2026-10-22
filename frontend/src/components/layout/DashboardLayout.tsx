@@ -48,7 +48,6 @@ function buildAdminMenuGroups(t: (key: TranslationKey) => string): AdminMenuGrou
         { href: '/dashboard/landing-page', label: t('landingPage') },
         { href: '/dashboard/banners', label: t('banners') },
         { href: '/dashboard/goals', label: t('goals') },
-        { href: '/dashboard/video-validation', label: t('videoValidation') },
         { href: '/dashboard/modules', label: t('modules') },
       ],
     },
@@ -65,6 +64,7 @@ function buildAdminMenuGroups(t: (key: TranslationKey) => string): AdminMenuGrou
       title: t('adminMenuTools'),
       items: [
         { href: '/dashboard/admin/ai-content-review', label: t('adminMenuAiReview') },
+        { href: '/dashboard/admin/video-validation', label: t('videoValidation') },
         { href: '/dashboard/admin/send-email', label: t('adminMenuSendEmail') },
       ],
     },
@@ -217,14 +217,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 {showClinicalNav && user.role !== 'parent' && !isAdmin && (
                   <Link href="/dashboard/goals" className={desktopLinkClass('/dashboard/goals')}>
                     {t('goals')}
-                  </Link>
-                )}
-                {showClinicalNav && user.role !== 'parent' && !isAdmin && (
-                  <Link
-                    href="/dashboard/video-validation"
-                    className={desktopLinkClass('/dashboard/video-validation')}
-                  >
-                    {t('videoValidation')}
                   </Link>
                 )}
                 {user.role !== 'parent' && !isAdmin && (
@@ -383,15 +375,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {t('goals')}
-                </Link>
-              )}
-              {showClinicalNav && user.role !== 'parent' && (
-                <Link
-                  href="/dashboard/video-validation"
-                  className={mobileLinkClass('/dashboard/video-validation')}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  {t('videoValidation')}
                 </Link>
               )}
               {user.role !== 'parent' && (

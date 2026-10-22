@@ -12,7 +12,15 @@ import { logger } from '../utils/logger.js';
 const DEFAULT_ACTIVITY_SECONDS = 600;
 const MIN_LOG_DURATION_HOURS = 0.25;
 
-type SkillEntry = { name: string; rating: number; target?: string; trial_data?: string; domain?: string };
+type SkillEntry = {
+  name: string;
+  rating: number;
+  target?: string;
+  trial_data?: string;
+  domain?: string;
+  /** Plan program id, so practice-video feedback attaches to the right program. */
+  program_id?: string;
+};
 
 function mondayWeekStart(d: Date): Date {
   const day = d.getDay();
@@ -276,6 +284,7 @@ function buildSkillsFromGuided(session: ChildAbaProgramSession, plan: any): Skil
       target: display.target,
       trial_data: display.trial_data,
       rating: trialAccuracyRating(display.trial_data),
+      ...(a?.linked_program_id ? { program_id: String(a.linked_program_id) } : {}),
     });
   }
 

@@ -3,11 +3,18 @@ import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { EmailService, getEmailDeliveryStatus } from './email.service.js';
 
-type PendingContentKind = 'assessment' | 'weekly_program';
+type PendingContentKind = 'assessment' | 'weekly_program' | 'program_video';
 
 const KIND_LABEL: Record<PendingContentKind, string> = {
   assessment: 'Initial Assessment report',
   weekly_program: 'Weekly Home Program (ABA)',
+  program_video: 'practice video (AI fidelity check)',
+};
+
+const KIND_REVIEW_PATH: Record<PendingContentKind, string> = {
+  assessment: '/dashboard/admin/ai-content-review',
+  weekly_program: '/dashboard/admin/ai-content-review',
+  program_video: '/dashboard/admin/video-validation',
 };
 
 /**
@@ -32,7 +39,7 @@ export async function notifyAdminsOfPendingAiContent(input: {
     if (recipients.length === 0) return;
 
     const label = KIND_LABEL[input.kind];
-    const reviewUrl = `${config.frontendUrl}/dashboard/admin/ai-content-review`;
+    const reviewUrl = `${config.frontendUrl}${KIND_REVIEW_PATH[input.kind]}`;
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -94,7 +101,7 @@ export async function notifyAdminsOfPendingAiContent(input: {
  * Best-effort: never throws. Fire-and-forget so review is never blocked.
  */
 export async function notifyParentOfApprovedContent(input: {
-  kind: PendingContentKind;
+  kind: Exclude<PendingContentKind, 'program_video'>;
   childId: number;
 }): Promise<void> {
   try {
@@ -138,5 +145,56 @@ export async function notifyParentOfApprovedContent(input: {
     logger.info({ childId: input.childId, kind: input.kind }, 'Sent parent content-approved email');
   } catch (err) {
     logger.warn({ err, childId: input.childId }, 'Failed to send content-approved email');
+  }
+}
+
+/**
+ * Tell the parent that the clinical team's feedback on a practice video is
+ * ready. The feedback itself lives in Activity Logs, under the program.
+ *
+ * Best-effort: never throws. Fire-and-forget so review is never blocked.
+ */
+export async function notifyParentOfVideoFeedback(input: {
+  childId: number;
+  programName: string;
+}): Promise<void> {
+  try {
+    if (!getEmailDeliveryStatus().configured) return;
+
+    const child = await prisma.child.findUnique({
+      where: { id: input.childId },
+      select: { name: true, parent: { select: { name: true, email: true } } },
+    });
+    const email = child?.parent?.email?.trim();
+    if (!child || !email) return;
+
+    const logsUrl = `${config.frontendUrl}/dashboard/logs`;
+    const headline = `Umpan balik video latihan ${child.name} sudah tersedia`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #00A896;">${headline} 🎬</h2>
+        <p>Halo ${child.parent?.name || 'Ayah/Bunda'},</p>
+        <p>
+          Terima kasih sudah merekam latihan <strong>${input.programName}</strong> bersama ${child.name}.
+          Tim klinis Gradion sudah menonton videonya dan menuliskan umpan balik untuk Anda —
+          apa yang sudah berjalan baik, dan satu-dua hal kecil yang bisa dicoba di latihan berikutnya.
+        </p>
+        <p>
+          <a href="${logsUrl}"
+             style="background-color: #00C1B2; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; display: inline-block; margin: 8px 0;">
+            Lihat umpan balik
+          </a>
+        </p>
+        <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+          Setiap latihan kecil berarti 💚 — Email otomatis dari Gradion.
+        </p>
+      </div>
+    `;
+
+    const emailService = new EmailService();
+    await emailService.sendEmail({ to: email, subject: headline, html });
+    logger.info({ childId: input.childId }, 'Sent parent video-feedback email');
+  } catch (err) {
+    logger.warn({ err, childId: input.childId }, 'Failed to send video-feedback email');
   }
 }

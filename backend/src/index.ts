@@ -31,6 +31,10 @@ import { videoFidelityRoutes } from './routes/videoFidelity.js';
 import { modulesRoutes } from './routes/modules.js';
 import { abaProgramRoutes } from './routes/abaProgram.js';
 import { analyticsRoutes } from './routes/analytics.js';
+import { programVideosRoutes } from './routes/programVideos.js';
+import { startProgramVideoWorker } from './services/programVideoAnalysis.service.js';
+import { purgeExpiredProgramVideos } from './services/programVideoRetention.service.js';
+import { logPrivateMediaConfiguration } from './lib/privateMedia.js';
 import { seedMockAutismCases } from './services/abaAutismCase.service.js';
 import { ensureDefaultInitialObservationTemplate } from './services/initialObservationTemplate.service.js';
 import { prisma } from './lib/prisma.js';
@@ -147,6 +151,21 @@ async function buildServer() {
     }
   });
 
+  // Practice videos stored locally live under uploads/.private and must never
+  // be served publicly (they play through a signed, authenticated route).
+  server.addHook('onRequest', async (request, reply) => {
+    if (!request.url.toLowerCase().startsWith('/uploads/')) return;
+    let path = request.url;
+    try {
+      path = decodeURIComponent(request.url);
+    } catch {
+      // Malformed encoding: fall through with the raw URL.
+    }
+    if (path.toLowerCase().replace(/\/+/g, '/').startsWith('/uploads/.private')) {
+      reply.code(404).send({ success: false, error: 'Not found' });
+    }
+  });
+
   // Static file serving for uploads - register after CORS
   await server.register(fastifyStatic, {
     root: path.join(__dirname, '../uploads'),
@@ -183,6 +202,8 @@ async function buildServer() {
   await server.register(modulesRoutes, { prefix: '/api/modules' });
   await server.register(abaProgramRoutes, { prefix: '/api/aba-program' });
   await server.register(analyticsRoutes, { prefix: '/api/analytics' });
+  await server.register(programVideosRoutes, { prefix: '/api/program-videos' });
+  logPrivateMediaConfiguration();
 
   // Global error handler - sanitize errors in production and standardize responses
   server.setErrorHandler((error, request, reply) => {
@@ -271,7 +292,17 @@ async function start() {
         utcMinute: 0,
         run: () => sendWeeklyProgramReminders('evening').then(() => undefined),
       },
+      // Delete practice-video files past retention (02:00 WIB, off-peak).
+      {
+        name: 'program-video-retention',
+        utcHour: wibHourToUtc(2),
+        utcMinute: 0,
+        run: () => purgeExpiredProgramVideos().then(() => undefined),
+      },
     ]);
+
+    // AI analysis of submitted practice videos (resumes any queued work).
+    startProgramVideoWorker();
   } catch (err) {
     logger.error(err);
     process.exit(1);

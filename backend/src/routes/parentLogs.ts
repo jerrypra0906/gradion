@@ -55,6 +55,69 @@ function computeAverageRating(skills: SkillEntry[]): number {
   return Math.round(total / skills.length);
 }
 
+/**
+ * Reviewed practice-video feedback for the log's ABA session. Only the
+ * parent-facing parts of the report leave the server — the admin's clinical
+ * notes stay on the admin page.
+ */
+const videoFeedbackInclude = {
+  abaSession: {
+    select: {
+      programVideos: {
+        where: { review_status: { in: ['approved', 'rejected'] as ('approved' | 'rejected')[] } },
+        select: {
+          id: true,
+          program_id: true,
+          program_name: true,
+          review_status: true,
+          final_score: true,
+          feedback_text: true,
+          rejection_reason: true,
+          final_report_json: true,
+          reviewed_at: true,
+        },
+      },
+    },
+  },
+} as const;
+
+type LogWithVideos = {
+  abaSession?: {
+    programVideos: Array<{
+      id: number;
+      program_id: string;
+      program_name: string;
+      review_status: string;
+      final_score: number | null;
+      feedback_text: string | null;
+      rejection_reason: string | null;
+      final_report_json: unknown;
+      reviewed_at: Date | null;
+    }>;
+  } | null;
+};
+
+function withVideoFeedback<T extends LogWithVideos>(log: T) {
+  const { abaSession, ...rest } = log;
+  const program_video_feedback = (abaSession?.programVideos ?? []).map((v) => {
+    const report = (v.final_report_json ?? {}) as { strengths?: unknown; improvements?: unknown };
+    const list = (x: unknown) => (Array.isArray(x) ? x.map(String).filter(Boolean) : []);
+    return {
+      id: v.id,
+      program_id: v.program_id,
+      program_name: v.program_name,
+      status: v.review_status,
+      score: v.review_status === 'approved' ? v.final_score : null,
+      feedback_text: v.feedback_text,
+      strengths: v.review_status === 'approved' ? list(report.strengths) : [],
+      improvements: v.review_status === 'approved' ? list(report.improvements) : [],
+      rejection_reason: v.rejection_reason,
+      reviewed_at: v.reviewed_at,
+    };
+  });
+  return { ...rest, program_video_feedback };
+}
+
 
 export async function parentLogsRoutes(
   fastify: FastifyInstance,
@@ -280,6 +343,7 @@ export async function parentLogsRoutes(
               role: true,
             },
           },
+          ...videoFeedbackInclude,
         },
         orderBy: {
           log_date: 'desc',
@@ -288,7 +352,7 @@ export async function parentLogsRoutes(
 
       return {
         success: true,
-        data: logs,
+        data: logs.map(withVideoFeedback),
       };
     }
   );
@@ -326,6 +390,7 @@ export async function parentLogsRoutes(
               role: true,
             },
           },
+          ...videoFeedbackInclude,
         },
       });
 
@@ -364,7 +429,7 @@ export async function parentLogsRoutes(
 
       return {
         success: true,
-        data: log,
+        data: withVideoFeedback(log),
       };
     }
   );

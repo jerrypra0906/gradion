@@ -22,6 +22,8 @@ model User {
   created_at            DateTime                 @default(now())
   is_email_verified     Boolean                  @default(false)
   google_id             String?                  @unique
+  /// When the parent agreed to practice-video recording + AI analysis (null = not yet).
+  video_consent_at      DateTime?
   verificationTokens    EmailVerificationToken[]
   passwordResetTokens   PasswordResetToken[]
   children              Child[]                  @relation("ParentChildren")
@@ -44,6 +46,8 @@ model User {
   webauthnCredentials  WebAuthnCredential[]
   analyticsPageViews   AnalyticsPageView[]
   analyticsErrors      AnalyticsError[]
+  programVideos        AbaProgramVideo[]           @relation("ProgramVideoUploader")
+  programVideoReviewEdits AbaProgramVideoReviewEdit[] @relation("ProgramVideoReviewer")
 
   @@index([referral_code])
   @@index([referred_by_code])
@@ -104,6 +108,7 @@ model Child {
   abaAutismCases       AbaAutismCase[]
   abaProgramLearningInsights AbaProgramLearningInsight[]
   aiTokenUsageLogs     AITokenUsageLog[]
+  programVideos        AbaProgramVideo[]
 
   @@map("children")
 }
@@ -215,6 +220,7 @@ model ChildAbaProgramWeek {
   child    Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
   sessions ChildAbaProgramSession[]
   learningInsights AbaProgramLearningInsight[]
+  programVideos AbaProgramVideo[]
 
   @@unique([child_id, week_start])
   @@index([child_id])
@@ -276,10 +282,113 @@ model ChildAbaProgramSession {
   week ChildAbaProgramWeek @relation(fields: [week_id], references: [id], onDelete: Cascade)
   user User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
   parentLog ParentLog?
+  programVideos AbaProgramVideo[]
 
   @@index([week_id])
   @@index([user_id])
   @@map("child_aba_program_sessions")
+}
+
+enum ProgramVideoSource {
+  recording
+  upload
+}
+
+/// Pipeline state of a practice video. Admin approval lives in review_status.
+enum ProgramVideoStatus {
+  /// Row created and an upload URL issued; the file has not been confirmed yet.
+  awaiting_upload
+  /// File is stored; waiting for the parent to submit the practice session.
+  uploaded
+  /// Ready for AI analysis.
+  queued
+  analyzing
+  /// AI report ready — awaiting admin review.
+  analyzed
+  /// No AI report (quota, AI unavailable, analysis failed) — admin reviews by hand.
+  manual_review
+}
+
+/// A parent's video of one program within one practice run (session), with the
+/// AI fidelity analysis against that program's guidance and the admin review.
+/// The video file is deleted after retention; this row (scores, feedback) stays.
+model AbaProgramVideo {
+  id                   Int                @id @default(autoincrement())
+  child_id             Int
+  week_id              Int
+  session_id           Int
+  /// plan_json programs[].id (master program id).
+  program_id           String
+  activity_id          String?
+  /// Snapshot of the program name, for display after plans change.
+  program_name         String
+  uploader_id          Int
+  source               ProgramVideoSource
+  /// 's3' | 'local'
+  storage_backend      String
+  storage_key          String
+  mime_type            String
+  file_size            Int
+  duration_seconds     Int?
+  /// Wall-clock start of an in-app recording; aligns trial taps to video time.
+  recording_started_at DateTime?
+  status               ProgramVideoStatus @default(awaiting_upload)
+  ai_report_json       Json?
+  ai_score             Int?
+  ai_model             String?
+  /// Raw provider tokens (cost tracking). Families are charged a flat credit.
+  ai_tokens_used       Int?
+  ai_error             String?            @db.Text
+  analyzed_at          DateTime?
+  review_status        AiReviewStatus     @default(pending)
+  /// Admin-adjusted report — what the parent sees.
+  final_report_json    Json?
+  final_score          Int?
+  feedback_text        String?            @db.Text
+  rejection_reason     String?            @db.Text
+  reviewed_by          Int?
+  reviewed_at          DateTime?
+  video_deleted_at     DateTime?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  child    Child                  @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  week     ChildAbaProgramWeek    @relation(fields: [week_id], references: [id], onDelete: Cascade)
+  session  ChildAbaProgramSession @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  uploader User                   @relation("ProgramVideoUploader", fields: [uploader_id], references: [id], onDelete: Cascade)
+  reviewEdits AbaProgramVideoReviewEdit[]
+
+  /// One video per program per practice run (re-recording replaces it).
+  @@unique([session_id, program_id])
+  @@index([child_id])
+  @@index([status])
+  @@index([review_status])
+  @@index([program_id])
+  @@map("aba_program_videos")
+}
+
+/// AI-vs-admin snapshot written on every video review. Feeds the video AI
+/// calibration examples and the AI/admin agreement metric.
+model AbaProgramVideoReviewEdit {
+  id           Int      @id @default(autoincrement())
+  video_id     Int
+  program_id   String
+  program_name String
+  language     String
+  editor_id    Int?
+  decision     AiReviewStatus
+  ai_json      Json
+  admin_json   Json
+  /// final_score - ai_score (null when there was no AI score).
+  score_delta  Int?
+  created_at   DateTime @default(now())
+
+  video  AbaProgramVideo @relation(fields: [video_id], references: [id], onDelete: Cascade)
+  editor User?           @relation("ProgramVideoReviewer", fields: [editor_id], references: [id], onDelete: SetNull)
+
+  @@index([program_id])
+  @@index([created_at])
+  @@map("aba_program_video_review_edits")
 }
 
 model TherapistChild {

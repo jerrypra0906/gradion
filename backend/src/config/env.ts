@@ -44,9 +44,21 @@ const envSchema = z.object({
   // AI — Gradion uses Google Gemini as primary (TD); OpenAI remains optional fallback
   GEMINI_API_KEY: optionalString,
   GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
-  GEMINI_VIDEO_MODEL: z.string().default('gemini-1.5-pro'),
+  // Gemini 1.5 models are retired; 3.8 Flash is Google's recommended video-capable
+  // model for new projects. gemini-3.5-flash-lite is the cheaper alternative.
+  GEMINI_VIDEO_MODEL: z.string().default('gemini-3.8-flash'),
   AI_VIDEO_MIN_TOKEN_CHARGE: z.coerce.number().default(3500),
   VIDEO_FIDELITY_MAX_FILE_MB: z.coerce.number().default(100),
+  // Practice videos (weekly home program). One video's raw multimodal usage
+  // (~35k tokens for 5 min) exceeds whole monthly plan quotas, so families are
+  // charged this flat credit per analyzed video instead.
+  AI_PROGRAM_VIDEO_TOKEN_CHARGE: z.coerce.number().default(3500),
+  PROGRAM_VIDEO_MAX_FILE_MB: z.coerce.number().default(500),
+  PROGRAM_VIDEO_MAX_DURATION_SECONDS: z.coerce.number().default(1200),
+  /// Video files are deleted this many days after an admin approves/rejects them.
+  PROGRAM_VIDEO_RETENTION_DAYS: z.coerce.number().default(14),
+  /// ...and this many days after upload if never reviewed.
+  PROGRAM_VIDEO_UNREVIEWED_DAYS: z.coerce.number().default(30),
   OPENAI_API_KEY: optionalString,
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
   OPENAI_MAX_TOKENS: z.coerce.number().default(1000),
@@ -114,6 +126,11 @@ const envSchema = z.object({
   SUPABASE_URL: optionalUrl,
   SUPABASE_SERVICE_ROLE_KEY: optionalString,
   SUPABASE_STORAGE_BUCKET: z.string().default('uploads'),
+  // AWS S3 — private bucket for practice videos. Credentials come from the
+  // standard AWS chain (EC2 instance role preferred; AWS_ACCESS_KEY_ID /
+  // AWS_SECRET_ACCESS_KEY env vars also work).
+  AWS_S3_BUCKET: optionalString,
+  AWS_S3_REGION: z.string().default('ap-southeast-3'),
 
   // CORS
   CORS_ORIGIN: z.string(),
@@ -179,6 +196,7 @@ export const config = {
     geminiVideoModel: parsedEnv.data.GEMINI_VIDEO_MODEL,
     videoMinTokenCharge: parsedEnv.data.AI_VIDEO_MIN_TOKEN_CHARGE,
     videoMaxFileMb: parsedEnv.data.VIDEO_FIDELITY_MAX_FILE_MB,
+    programVideoTokenCharge: parsedEnv.data.AI_PROGRAM_VIDEO_TOKEN_CHARGE,
     openaiApiKey: parsedEnv.data.OPENAI_API_KEY,
     openaiModel: parsedEnv.data.OPENAI_MODEL,
     openaiMaxTokens: parsedEnv.data.OPENAI_MAX_TOKENS,
@@ -223,6 +241,14 @@ export const config = {
     supabaseUrl: parsedEnv.data.SUPABASE_URL,
     supabaseServiceRoleKey: parsedEnv.data.SUPABASE_SERVICE_ROLE_KEY,
     supabaseStorageBucket: parsedEnv.data.SUPABASE_STORAGE_BUCKET,
+    awsS3Bucket: parsedEnv.data.AWS_S3_BUCKET,
+    awsS3Region: parsedEnv.data.AWS_S3_REGION,
+  },
+  programVideos: {
+    maxFileMb: parsedEnv.data.PROGRAM_VIDEO_MAX_FILE_MB,
+    maxDurationSeconds: parsedEnv.data.PROGRAM_VIDEO_MAX_DURATION_SECONDS,
+    retentionDays: parsedEnv.data.PROGRAM_VIDEO_RETENTION_DAYS,
+    unreviewedDays: parsedEnv.data.PROGRAM_VIDEO_UNREVIEWED_DAYS,
   },
   corsOrigin: parsedEnv.data.CORS_ORIGIN,
   corsCredentials: parsedEnv.data.CORS_CREDENTIALS,
