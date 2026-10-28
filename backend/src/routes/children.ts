@@ -666,14 +666,19 @@ export async function childrenRoutes(
     }
   );
 
-  // Update child
+  // Update child profile (owning parent or admin only; staff assigned to a
+  // child may view it but never edit its profile fields)
   fastify.put(
     '/:id',
-    { preHandler: authenticate },
+    { preHandler: [authenticate, requireRole('parent', 'admin')] },
     async (request, reply) => {
       const user = (request as AuthenticatedRequest).user!;
       const { id } = request.params as { id: string };
-      const childId = parseInt(id);
+      const childId = parseInt(id, 10);
+      if (Number.isNaN(childId)) {
+        reply.code(400);
+        return { success: false, error: 'Invalid child ID' };
+      }
       const body = updateChildSchema.parse(request.body);
 
       // Check permissions
@@ -681,7 +686,7 @@ export async function childrenRoutes(
         where: { id: childId },
       });
 
-      if (!child) {
+      if (!child || (!child.is_active && user.role !== 'admin')) {
         reply.code(404);
         return {
           success: false,
